@@ -1,4 +1,4 @@
-#lang bottega
+#lang disegno
 ; Soluzioni del capitolo 9 — Le prove come programmi
 ;
 ;   raco make book/solutions/09-proofs-as-programs.rkt
@@ -57,7 +57,7 @@
 
 ; 4. Una politica, e il teorema che il piano la rispetta.
 
-(require bottega/lib/dagger)
+(require disegno/lib/dagger)
 
 (claim golang? (→ Image Bool))
 (define (golang? i) (contains? (Image.raw i) "golang"))

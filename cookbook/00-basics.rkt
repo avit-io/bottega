@@ -1,0 +1,63 @@
+#lang disegno
+; 00 — Le basi: tipi, definizioni, prove
+;
+; Disegno è Scheme con i tipi dipendenti, come Pie: `(claim nome tipo)` e poi
+; `(define (nome x …) corpo)`, con `match` per i casi; `data` per i tipi induttivi, `record`
+; per un costruttore con campi nominati. Programmi e prove si scrivono allo stesso
+; modo: cambia solo il tipo. Questa ricetta non ha main: si verifica e basta.
+;
+;   racket cookbook/00-basics.rkt check
+
+; --- un programma: la somma è nella libreria standard; qui una prova su di essa ---
+; Le variabili libere nelle firme sono implicite; 0, 1, 2… sono zucchero per zero, add1.
+
+(require bottega/lib/text)
+
+(claim +-zero (Π ((n Nat)) (≡ (+ n 0) n)))
+(define (+-zero n)
+  (match n
+    (zero     refl)
+    ((add1 k) (cong add1 (+-zero k)))))          ; induzione: la chiamata su k è strutturale
+
+; --- famiglie induttive: la lunghezza nel tipo ---
+
+(data Vec : (→ Type Nat Type)
+  (vnil  : (Vec A 0))
+  (vcons : (→ A (Vec A n) (Vec A (add1 n)))))
+
+(claim head (→ (Vec A (add1 n)) A))            ; il caso vnil è impossibile: il checker lo sa
+(define (head m)
+  (match m
+    ((vcons x _) x)))
+
+; --- invarianti di dominio nel tipo, verificati calcolando al momento del check ---
+
+(data Env
+  (dev)
+  (prod))
+
+(claim min-replicas (→ Env Nat))
+(define (min-replicas n)
+  (match n
+    (dev  1)
+    (prod 3)))
+
+(record App
+  (name String)
+  (env Env)
+  (replicas Nat)
+  (ok (≥ replicas (min-replicas env))))
+
+(claim api App)
+(define api (app "api" prod 3 auto))                 ; con 2 repliche: «auto: the proposition reduces to ⊥»
+
+; --- prove per calcolo: auto ---
+
+(claim uno-più-uno (≡ (+ 1 1) 2))
+(define uno-più-uno auto)
+
+(claim testa (≡ (head (vcons 1 vnil)) 1))
+(define testa auto)
+
+(claim api-in-regola (≥ (App.replicas api) (min-replicas (App.env api))))
+(define api-in-regola auto)

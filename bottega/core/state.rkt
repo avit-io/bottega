@@ -4,9 +4,11 @@
 
 (provide (struct-out exn:fail:bottega) here at oops
          (struct-out global) lookup define-global! global-kind? constructor? all-global-names
-         builtin-keys builtin builtin? builtin-key bind-builtin!
+         register-builtin-keys! builtin-key-kind builtin builtin? builtin-key bind-builtin!
+         register-root-namespace! root-field
          privileged
          new-meta! meta-solution meta-name meta-type solve-meta!
+         record-signature! signature-of
          fresh-number!
          with-fresh-state)
 
@@ -50,17 +52,29 @@
 ;; The library names the core knows about, like Agda's BUILTIN. The keys are a closed list; the
 ;; library binds each key to one of its names with (builtin key name). So the checker never
 ;; names the library: numerals, strings, paths, lists, auto and acceleration go through here.
-;; key → the kind of global it must name.
-;; ponytail: a closed list; dialects (the plan's Obj, main's inputs) will extend it in phase 4.
+;; key → the kind of global it must name. A dialect adds its own keys (disegno: the plan's Obj
+;; and main's inputs) with register-builtin-keys!.
+(define (register-builtin-keys! keys) (for ([k keys]) (hash-set! builtin-keys (car k) (cdr k))))
+(define (builtin-key-kind key) (hash-ref builtin-keys key #f))
 (define builtin-keys
-  '((nat . data) (zero . con) (suc . con)
+  (make-hasheq
+   '((nat . data) (zero . con) (suc . con)
     (bool . data) (true . con) (false . con)
     (unit . data) (tt . con) (empty . data) (eq . data) (refl . con) (sigma . data)
     (list . data) (nil . con) (cons . con)
     (string . extern)
     (abs . data) (root . con) (slash . con) (rel . data) (here . con) (step . con) (segment . data)
     (duration . data) (instant . data) (ip . data) (cidr . data)
-    (plus . def) (monus . def) (times . def) (leq? . def) (lt? . def) (nat-eq? . def) (pow2 . def)))
+    (plus . def) (monus . def) (times . def) (leq? . def) (lt? . def) (nat-eq? . def) (pow2 . def))))
+
+;; Root namespaces: a name x that is not defined is looked up as Prefix.x. Disegno registers
+;; "Query", so (container) is the schema's root field Query.container.
+(define root-namespaces '())
+(define (register-root-namespace! prefix) (set! root-namespaces (append root-namespaces (list prefix))))
+(define (root-field x)
+  (for/or ([p root-namespaces])
+    (define n (string->symbol (format "~a.~a" p x)))
+    (and (lookup n) n)))
 
 (define current-builtins (make-parameter (make-hasheq)))     ; key → name
 (define current-builtin-of (make-parameter (make-hasheq)))   ; name → key
@@ -92,6 +106,14 @@
 (define (meta-type id) (hole-type (hash-ref (current-metas) id)))
 (define (solve-meta! id v) (set-hole-solution! (hash-ref (current-metas) id) v))
 
+;; --- signatures, as written ------------------------------------------------------------------
+
+;; A define's elaborated signature, not reduced: (Host ".") stays Host, not Directory. The
+;; runner reads main's inputs from it.
+(define current-signatures (make-parameter (make-hasheq)))
+(define (record-signature! name t) (hash-set! (current-signatures) name t))
+(define (signature-of name) (hash-ref (current-signatures) name #f))
+
 ;; --- fresh names ----------------------------------------------------------------------------
 
 (define current-counter (make-parameter (box 0)))
@@ -105,5 +127,6 @@
                  [current-builtins (make-hasheq)]
                  [current-builtin-of (make-hasheq)]
                  [current-metas (make-hasheqv)]
+                 [current-signatures (make-hasheq)]
                  [current-counter (box 0)])
     (thunk)))

@@ -103,6 +103,7 @@
         [(assq x (ctx-defs c)) => (λ (d) (values (reify (ctx-level c) (cadr d)) (caddr d)))]
         [(and (not (privileged)) (core-reserved? x)) (oops "~a is reserved to the core" x)]
         [(lookup x) => (λ (g) (values (tglob x) (global-type g)))]
+        [(root-field x) => (λ (n) (values (tglob n) (global-type (lookup n))))]
         [(path-literal? x) (values (path-term c x) (vglob (builtin 'abs) '()))]
         [else (unknown-name x)]))
 
@@ -110,9 +111,10 @@
 (define (infer-short-name c e f args)
   (define-values (t1 ty1) (let-values ([(t ty) (infer c (car args))]) (insert c t ty)))
   (define self (reify (ctx-level c) ty1))
-  (define n (or (findf (λ (n) (equal? (self-type n) self)) (qualified f))
-                (oops "~a does not exist for ~s" f (show c ty1))))
-  (apply-args c e (tglob n) (global-type (lookup n)) args (cons t1 ty1)))
+  (define n (findf (λ (n) (equal? (self-type n) self)) (qualified f)))
+  (cond [n (apply-args c e (tglob n) (global-type (lookup n)) args (cons t1 ty1))]
+        [(root-field f) => (λ (r) (apply-args c e (tglob r) (global-type (lookup r)) args (cons t1 ty1)))]
+        [else (oops "~a does not exist for ~s" f (show c ty1))]))
 
 ;; Applies t : ty to the arguments. pre: the first argument already elaborated, (term . type), or #f.
 (define (apply-args c e t ty args pre)
@@ -448,7 +450,7 @@
   (define (walk e bound)
     (match e
       [(s-name loc x)
-       (unless (or (eq? x '_) (memq x bound) (memq x found) (lookup x) (path-literal? x))
+       (unless (or (eq? x '_) (memq x bound) (memq x found) (lookup x) (root-field x) (path-literal? x))
          (if (variable-shaped? x) (set! found (cons x found)) (at loc (unknown-name x))))]
       [(s-lam _ xs body) (walk body (append xs bound))]
       [(s-let _ bs body) (walk body (for/fold ([bound bound]) ([b bs]) (walk (cdr b) bound) (cons (car b) bound)))]

@@ -1,0 +1,1 @@
+directory { withNewFile(path: "/network.txt", contents: "app = 10.0.1.0/24\ndb = 10.0.2.0/24\nmgmt = 10.0.255.0/24\n", permissions: 420) { export(path: "cookbook/net", wipe: false) } }

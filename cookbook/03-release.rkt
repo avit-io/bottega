@@ -1,0 +1,48 @@
+#lang disegno
+; 03 — Una release: si pubblica solo se i test passano
+;
+; Due tempi, due condizionali. if decide mentre si costruisce il piano; branch decide durante
+; l'esecuzione, su un'osservazione del motore (qui l'esito dei test). Entrambi i rami stanno nel
+; piano: disegno plan li stampa tutti e due, con la condizione che li sceglie.
+;
+;   racket cookbook/03-release.rkt plan
+;
+; (run pubblicherebbe davvero l'immagine: cambia l'indirizzo del registry prima di provarlo.)
+
+(require disegno/lib/dagger)
+
+(claim golang (→ Dir Container))
+(define (golang src) (pipe (container) (from "golang:1.25-alpine") (with-dir /src src) (with-workdir /src)))
+
+(claim test (→ Dir Container))                  ; try-exec: un fallimento è un esito, non un errore
+(define (test src) (pipe (golang src) (try-exec (list "go" "vet" "./..."))))
+
+(claim build (→ Dir Dir))
+(define (build src)
+  (pipe (golang src)
+        (with-env "CGO_ENABLED" "0")
+        (with-exec (list "go" "build" "-o" /out/hello "."))
+        (dir-of /out)))
+
+(claim app-image (→ Dir Container))
+(define (app-image src)
+  (pipe (container)
+        (from "alpine:3.20")
+        (with-dir /app (build src))
+        (with-entrypoint (list "/app/hello"))))
+
+(claim report (→ Dir Dir))
+(define (report src) (with-file empty /report.txt "go vet non passa\n"))
+
+(claim release (→ Dir (Export Dir)))
+(define (release src)
+  (branch (passes? (test src))
+          (publish (app-image src) "registry.example.com/hello:1")
+          (overlay "reports" (report src))))
+
+(claim main (Π ((src (Host "hello"))) (Export Dir)))
+(define (main src) (release src))
+
+; Il teorema, per ogni sorgente: si pubblica solo dopo che i test sono passati.
+(claim test-prima-di-publish (Π ((src Dir)) (Before test? publish? (release src))))
+(define (test-prima-di-publish src) auto)

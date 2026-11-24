@@ -1,0 +1,5 @@
+# if container { from(address: "golang:1.25-alpine") { withDirectory(path: "/src", source: "<host { directory(path: \"cookbook/hello\") }>") { withWorkdir(path: "/src") { withExec(args: ["go", "vet", "./..."], expect: ANY) { exitCode } } } } } → true
+container { from(address: "alpine:3.20") { withDirectory(path: "/app", source: "<container { from(address: \"golang:1.25-alpine\") { withDirectory(path: \"/src\", source: \"<host { directory(path: \\\"cookbook/hello\\\") }>\") { withWorkdir(path: \"/src\") { withEnvVariable(name: \"CGO_ENABLED\", value: \"0\") { withExec(args: [\"go\", \"build\", \"-o\", \"/out/hello\", \".\"]) { directory(path: \"/out\") } } } } } }>") { withEntrypoint(args: ["/app/hello"]) { publish(address: "registry.example.com/hello:1") } } } }
+
+# if container { from(address: "golang:1.25-alpine") { withDirectory(path: "/src", source: "<host { directory(path: \"cookbook/hello\") }>") { withWorkdir(path: "/src") { withExec(args: ["go", "vet", "./..."], expect: ANY) { exitCode } } } } } → false
+directory { withNewFile(path: "/report.txt", contents: "go vet non passa\n", permissions: 420) { export(path: "cookbook/reports", wipe: false) } }

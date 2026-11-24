@@ -1,4 +1,4 @@
-#lang bottega
+#lang disegno
 ; Capitolo 9 — Le prove come programmi
 ;
 ; Lungo il libro programmi e prove si sono scritti allo stesso modo. Questo capitolo lo dice per
@@ -152,7 +152,7 @@
 ; immagini del piano, All chiede che il predicato valga per ognuna.
 
 ; Il piano, le immagini e i loro nomi stanno nel modulo dagger della libreria.
-(require bottega/lib/dagger)
+(require disegno/lib/dagger)
 
 (claim senza-latest? (→ Image Bool))
 (define (senza-latest? i) (not (contains? (Image.raw i) ":latest")))

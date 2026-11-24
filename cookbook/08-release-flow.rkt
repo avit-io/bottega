@@ -1,0 +1,65 @@
+#lang disegno
+; 08 — Un rilascio in sequenza: test, staging, controllo, prod
+;
+; Le uscite del piano si realizzano in ordine con then: un deploy è un effetto (apply), fuori
+; dalla cache, e un controllo sul mondo (probe) si fa quando lo si raggiunge, dopo lo staging.
+; Il deploy qui è un echo in un container, per non toccare niente di vero.
+;
+; I teoremi dicono che il test viene prima di ogni deploy e che prod viene dopo staging: è una
+; verità sulla forma del piano. Che il test abbia risposto sì è la verità di quel test, in quel
+; momento, non del mondo: guida il ramo e non diventa un assioma.
+;
+;   racket cookbook/08-release-flow.rkt plan     una sequenza di uscite per ogni esito
+;   racket cookbook/08-release-flow.rkt run
+
+(require disegno/lib/dagger)
+
+(claim toolbox Container)
+(define toolbox (pipe (container) (from "busybox@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e")))
+
+(claim deploy (→ String (Export Dir)))
+(define (deploy env) (apply toolbox (list "echo" "deploy" env)))
+
+; Il test guarda il sorgente; il controllo sullo staging guarda il mondo, dopo il deploy.
+(claim test (→ Dir (Remote Bool)))
+(define (test src) (passes? (try-exec (pipe toolbox (with-dir /src src)) (list "test" "-f" "/src/go.mod"))))
+
+(claim staging-risponde (Remote Bool))
+(define staging-risponde (probe toolbox (list "true")))
+
+(claim rilascio (→ Dir (Export Dir)))
+(define (rilascio src)
+  (branch (test src)
+          (begin
+            (deploy "staging")
+            (when staging-risponde
+              (deploy "prod")))
+          (overlay "out" (with-file empty /RIFIUTATO "il test non è passato\n"))))
+
+(claim main (Π ((src (Host "hello"))) (Export Dir)))
+(define (main src) (rilascio src))
+
+; --- l'ordine, per ogni sorgente ---
+
+; Il deploy verso un ambiente: un apply il cui comando nomina l'ambiente.
+(claim names? (→ String Arg Bool))
+(define (names? env n)
+  (match n
+    ((arg-text s) (not (distinct? env s)))
+    ((arg-path _) false)))
+
+(claim targets? (→ String (Export Dir) Bool))
+(define (targets? env n)
+  (match n
+    ((apply _ args) (any? (names? env) args))
+    (_              false)))
+
+(claim test-prima-del-deploy (Π ((src Dir)) (Before test? apply? (rilascio src))))
+(define (test-prima-del-deploy src) auto)
+
+(claim prod-dopo-staging (Π ((src Dir)) (Precedes (targets? "staging") (targets? "prod") (rilascio src))))
+(define (prod-dopo-staging src) auto)
+
+; E il contrario: un deploy in prod da solo non rispetta l'ordine.
+(claim prod-diretto (¬ (Precedes (targets? "staging") (targets? "prod") (deploy "prod"))))
+(define prod-diretto auto)

@@ -72,7 +72,7 @@
 ;; --- modules and the standard library's privileges ---
 
 (rejects "(require bottega/lib/nowhere)" "module bottega/lib/nowhere not found")
-(rejects "(require racket/list)" "only bottega modules")
+(rejects "(require racket/list)" "only modules in #lang bottega")
 (rejects "(import text)" "import is gone: (require bottega/lib/text)")
 
 (rejects "(extern lie : ⊥ nope)" "reserved to the standard library")

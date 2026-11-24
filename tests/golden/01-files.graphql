@@ -1,0 +1,1 @@
+host { directory(path: "cookbook/hello") { withNewFile(path: "/config/app.toml", contents: "[server]\nporta = 8080\n", permissions: 420) { withNewFile(path: "/LEGGIMI", contents: "generato da Disegno\n", permissions: 420) { export(path: "cookbook/out", wipe: false) } } } }

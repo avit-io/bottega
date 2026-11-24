@@ -1,0 +1,53 @@
+#lang disegno
+; 06 — Scrivere le proprie garanzie
+;
+; Il piano è un dato: le proprietà si scrivono come funzioni sul piano e si provano come
+; teoremi. Qui una politica nuova, «nessuna immagine :latest», scritta da zero; poi la stessa
+; politica in negativo, per documentare che un piano sbagliato viene davvero rifiutato.
+;
+;   racket cookbook/06-theorems.rkt check
+
+; --- la politica: un predicato sulle immagini, esteso a tutto il piano con images e All ---
+
+(require disegno/lib/dagger)
+
+(claim not-latest? (→ Image Bool))
+(define (not-latest? i) (not (contains? (Image.raw i) ":latest")))
+
+(claim No-latest (→ (Obj k) Type))
+(define (No-latest p) (All not-latest? (images p)))
+
+; --- un piano che la rispetta, anche dentro i rami di un branch ---
+
+(claim ci (→ Dir (Export Dir)))
+(define (ci src)
+  (let ((lint  (pipe (container) (from "golangci/golangci-lint:v2.1") (with-dir /src src)
+                     (try-exec (list "golangci-lint" "run"))))
+        (build (pipe (container) (from "golang:1.25-alpine") (with-dir /src src)
+                     (with-exec (list "go" "build" "./...")) (dir-of /src))))
+    (branch (passes? lint) (overlay "dist" build) (overlay "lint" src))))
+
+; Per una sorgente qualsiasi la proprietà non vale: src stesso potrebbe essere un piano costruito
+; con un'immagine :latest, e images lo attraversa. Si prova quindi sulle immagini che ci introduce,
+; con la sorgente vuota. (montaggi-disgiunti nella ricetta 02 vale invece per ogni sorgente,
+; perché i montaggi si raccolgono lungo la catena del container senza scendere negli argomenti.)
+(claim ci-senza-latest (No-latest (ci empty)))
+(define ci-senza-latest auto)
+
+; --- in negativo: il teorema che un piano sbagliato non rispetta la politica ---
+
+(claim sbagliato Container)
+(define sbagliato (pipe (container) (from "golang:latest") (with-exec (list "go" "version"))))
+
+(claim sbagliato-rifiutato (¬ (No-latest sbagliato)))
+(define sbagliato-rifiutato auto)
+
+; --- una legge generale, per induzione: map distribuisce sulla concatenazione ---
+; (le leggi della libreria standard stanno in tests/checks.disegno, verificate a ogni test)
+
+(claim map-++ (Π ((f (→ A B)) (xs (List A)) (ys (List A)))
+                (≡ (map f (++ xs ys)) (++ (map f xs) (map f ys)))))
+(define (map-++ f xs ys)
+  (match xs
+    (nil refl)
+    ((:: x xs) (cong (:: (f x)) (map-++ f xs ys)))))

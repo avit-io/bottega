@@ -1,0 +1,11 @@
+# if container { from(address: "busybox@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e") { withDirectory(path: "/src", source: "<host { directory(path: \"cookbook/hello\") }>") { withExec(args: ["test", "-f", "/src/go.mod"], expect: ANY) { exitCode } } } } → true
+container { from(address: "busybox@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e") { withEnvVariable(name: "DISEGNO_RUN", value: "<run>-N") { withExec(args: ["echo", "deploy", "staging"]) { exitCode } } } }
+# if container { from(address: "busybox@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e") { withEnvVariable(name: "DISEGNO_RUN", value: "<run>-N") { withExec(args: ["true"], expect: ANY) { exitCode } } } } → true
+container { from(address: "busybox@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e") { withEnvVariable(name: "DISEGNO_RUN", value: "<run>-N") { withExec(args: ["echo", "deploy", "prod"]) { exitCode } } } }
+
+# if container { from(address: "busybox@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e") { withDirectory(path: "/src", source: "<host { directory(path: \"cookbook/hello\") }>") { withExec(args: ["test", "-f", "/src/go.mod"], expect: ANY) { exitCode } } } } → true
+container { from(address: "busybox@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e") { withEnvVariable(name: "DISEGNO_RUN", value: "<run>-N") { withExec(args: ["echo", "deploy", "staging"]) { exitCode } } } }
+# if container { from(address: "busybox@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e") { withEnvVariable(name: "DISEGNO_RUN", value: "<run>-N") { withExec(args: ["true"], expect: ANY) { exitCode } } } } → false
+
+# if container { from(address: "busybox@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e") { withDirectory(path: "/src", source: "<host { directory(path: \"cookbook/hello\") }>") { withExec(args: ["test", "-f", "/src/go.mod"], expect: ANY) { exitCode } } } } → false
+directory { withNewFile(path: "/RIFIUTATO", contents: "il test non è passato\n", permissions: 420) { export(path: "cookbook/out", wipe: false) } }

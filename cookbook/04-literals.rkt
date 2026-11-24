@@ -1,0 +1,70 @@
+#lang disegno
+; 04 — I punti non si sommano: letterali tipati e spazi affini
+;
+; Si scrivono ancora stringhe e numeri familiari, ma è il tipo atteso a leggerli: un letterale
+; malformato è un errore di tipo, non un fallimento dentro un container. Dove ci sono posizioni
+; e spostamenti valgono le regole affini: punto + spostamento = punto, punto − punto =
+; spostamento (solo se ha senso), punto + punto non si scrive.
+;
+;   racket cookbook/04-literals.rkt check
+
+; --- immagini: un tag è un punto mobile, un digest un punto fisso ---
+
+(require disegno/lib/dagger bottega/lib/time)
+
+(claim builder Image)
+(define builder "golang:1.25-alpine")
+(claim base Image)
+(define base "alpine@sha256:4bcff63911fcb4448bd4fdacec207030997caf25e9bea4045fa6c8c44de311d1")
+
+(claim base-fissata (So (pinned? base)))
+(define base-fissata auto)
+
+; --- percorsi: /out è un punto, "bin/hello" uno spostamento ---
+
+(claim out Abs)
+(define out /out)
+(claim bin Abs)
+(define bin (⊕ out "bin/hello"))
+
+(claim bin-dentro-out (⊑ bin out))
+(define bin-dentro-out auto)
+
+(claim da-out-a-bin (≡ (⊖ bin out auto) "bin/hello"))     ; la differenza vuole la prova (⊑ bin out)
+(define da-out-a-bin auto)
+
+; --- tempo: istanti e durate ---
+
+(claim avvio Instant)
+(define avvio "2026-10-15T09:00:00Z")
+(claim scadenza Instant)
+(define scadenza (⊕ avvio "36h"))
+
+(claim un-giorno-e-mezzo (≡ (⊖ scadenza avvio auto) "1d12h"))
+(define un-giorno-e-mezzo auto)
+
+; --- indirizzi e porte ---
+
+(claim rete Cidr)
+(define rete "10.0.0.0/16")
+(claim gw Ip)
+(define gw "10.0.0.1")
+(claim web Port)
+(define web 8080)
+
+(claim gw-nella-rete (So (in? gw rete)))
+(define gw-nella-rete auto)
+
+; --- errori di tipo: togli il ; davanti a una riga per vederli ---
+; (claim e1 Image)
+; (define e1 "Golang:1.25")              ; «Golang:1.25» is not a valid Image
+; (claim e2 Abs)
+; (define e2 (⊕ out /bin))                 ; punto + punto: expected Rel, found Abs
+; (claim e3 Rel)
+; (define e3 (⊖ out bin auto))             ; /out non sta dentro /out/bin/hello: nessuna prova
+; (claim e4 Instant)
+; (define e4 (⊕ avvio scadenza))       ; atteso Duration, trovato Instant
+; (claim e5 Cidr)
+; (define e5 "10.0.0.1/24")               ; blocco non allineato: non è un Cidr valido
+; (claim e6 Port)
+; (define e6 70000)                       ; «70000» is not a valid Port

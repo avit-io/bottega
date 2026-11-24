@@ -8,7 +8,7 @@
 ;; Syntax objects come in, ast.rkt nodes go out; positions are kept on every node.
 
 (require racket/list racket/string syntax/parse "ast.rkt" "state.rkt")
-(provide parse-program syntax-loc)
+(provide parse-program syntax-loc register-sugar!)
 
 (define (syntax-loc s)
   (srcloc (syntax-source s) (syntax-line s) (syntax-column s) (syntax-position s) (syntax-span s)))
@@ -17,9 +17,23 @@
 
 (define declaration-keywords '(claim define data record extern builtin))
 
+;; Sugar of a dialect: a form whose head is registered here is rewritten, syntax to syntax, into
+;; forms of the core before parsing. Disegno: (begin a b) is (then a b), (when c a) is (branch c a skip).
+(define sugar (make-hasheq))                     ; head → (syntax → syntax)
+(define (register-sugar! head rewrite) (hash-set! sugar head rewrite))
+
+(define (sugar-of stx)
+  (syntax-parse stx
+    [(h:id . _) (hash-ref sugar (syntax-e #'h) #f)]
+    [_ #f]))
+
 ;; --- expressions ---
 
 (define (parse-expr stx)
+  (define rewrite (sugar-of stx))
+  (if rewrite (parse-expr (rewrite stx)) (parse-core-expr stx)))
+
+(define (parse-core-expr stx)
   (define loc (syntax-loc stx))
   (syntax-parse stx
     #:datum-literals (TODO auto Type Π ∀ → λ lambda let let* list the pipe match match* cond else string-append)
@@ -53,6 +67,7 @@
     [(kw:id . _) #:when (memq (syntax-e #'kw) declaration-keywords)
      (at loc (oops "~a: it is a declaration, not an expression" (syntax-e #'kw)))]
     [(f arg ...+) (s-app loc (parse-expr #'f) (map parse-expr (syntax->list #'(arg ...))))]
+    [(f) (parse-expr #'f)]                       ; (container): a name with no arguments is the name
     [_ (at loc (oops "invalid expression: ~s" (syntax->datum stx)))]))
 
 (define (binders vis xs as)

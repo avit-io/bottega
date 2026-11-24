@@ -1,0 +1,220 @@
+#lang disegno
+; Dagger: the plan as data, the short names and the plan's properties.
+
+(require bottega/lib/text bottega/lib/paths bottega/lib/net "values.rkt" "engine.rkt")
+
+; Two times, two conditionals: if (in the prelude) decides on known values when the plan is built;
+; branch on observations, which exist only during execution. A (Remote Bool) is not a Bool.
+; ponytail: the argument of Remote and Export is documentation; there are only boolean observations
+; and directory exports. An indexed Kind will be needed when there are others.
+
+(claim Remote (→ Type Type))
+(define (Remote _) (Obj Kind.bool))
+
+(claim Export (→ Type Type))
+(define (Export _) (Obj Kind.export))
+
+; The boundary with the host: the user reads the host only through (Host "path") in main's signature.
+
+(claim Host (→ String Type))
+(define (Host _) Directory)
+(builtin host Host)
+
+; A secret from the host: (Host-secret "AWS_ACCESS_KEY_ID") in main's signature, read from an
+; environment variable. The value never comes back to the language and does not appear in the plan:
+; it is handed to containers with with-secret-variable or with-mounted-secret.
+(claim Host-secret (→ String Type))
+(define (Host-secret _) Secret)
+(builtin host-secret Host-secret)
+
+; A plan parameter: (Host-env "TAG" "") in main's signature, read from the environment when the plan
+; is built, with a default value. It is an input, not an observation: the plan is a function of its
+; parameters, and the theorems hold for every value.
+(claim Host-env (→ String String Type))
+(define (Host-env _ _) String)
+(builtin host-env Host-env)
+
+; A parameter chosen among a data's constructors: (Host-choice "ENVIRONMENT" Env dev). The value
+; is the constructor named like the variable; a name that is not there stops building the plan.
+; So the program knows no unknown values, and does not have to invent one.
+(claim Host-choice (Π ((name String) (A Type)) (→ A Type)))
+(define (Host-choice _ A _) A)
+(builtin host-choice Host-choice)
+
+; --- short names: the engine's file system, immutable values; writing is building a new directory ---
+
+(claim Dir Type)
+(define Dir Directory)
+
+(claim empty Dir)
+(define empty Query.directory)
+
+(claim with-file (→ Dir Abs String Dir))        ; rw-r--r--, 0644
+(define (with-file d path contents) (Directory.with-new-file d path contents 420))
+
+(claim with-executable (→ Dir Abs String Dir))  ; rwxr-xr-x, 0755: a script
+(define (with-executable d path contents) (Directory.with-new-file d path contents 493))
+
+(claim without (→ Dir Abs Dir))
+(define (without d path) (Directory.without-file d path))
+
+(claim sub (→ Dir Abs Dir))
+(define (sub d path) (Directory.directory d path))
+
+(claim put (→ Dir Abs Dir Dir))
+(define (put d path source) (Directory.with-directory d path source))
+
+(claim exists? (→ Dir Abs (Remote Bool)))
+(define (exists? d path) (Directory.exists d path))
+
+; --- container: with-exec declares a command, it does not run it ---
+; Schema fields are written without a prefix: (from c "alpine") is Container.from because c is
+; a Container, (container) is the root field Query.container. Only the curated names here.
+
+(claim with-dir (→ Container Abs Dir Container))
+(define (with-dir c path source) (Container.with-directory c path source))
+
+(claim with-env (→ Container String String Container))
+(define (with-env c name value) (Container.with-env-variable c name value))
+
+(claim dir-of (→ Container Abs Dir))
+(define (dir-of c path) (Container.directory c path))
+
+; A configuration value, plain or secret: a service's host sometimes lives in a secret. In the
+; container it becomes an environment variable in both cases.
+(data Setting
+  (public String)
+  (private Secret))
+
+; A Dockerfile build: secrets arrive by name (RUN --mount=type=secret,id=ssh-key).
+; A secret's value is not part of BuildKit's cache key: a RUN copying it into a file stays
+; cached even if the secret changes. With secrets the runner also passes DISEGNO_RUN, different
+; on every run: an ARG DISEGNO_RUN before that RUN makes it run again.
+(claim build-dockerfile (→ Dir String (List Build-arg) (List Secret) Container))   ; source, Dockerfile, arguments, secrets
+(define (build-dockerfile src dockerfile args secrets) (Directory.docker-build src dockerfile args secrets))
+
+(claim with-setting (→ Container String Setting Container))
+(define (with-setting c name n)
+  (match n
+    ((public s)  (with-env c name s))
+    ((private s) (Container.with-secret-variable c name s))))
+
+; --- properties of the plan: computed on the data ---
+
+(claim image-of (→ Any (List Image)))
+(define (image-of n)
+  (match n
+    ((any (Container.from _ address)) (list address))
+    (_                                (list))))
+
+(claim images (→ (Obj k) (List Image)))
+(define (images p) (concat-map image-of (nodes p)))
+
+; An image with a tag is a moving point, one with a digest a fixed point: pinned means fixed.
+(claim pinned? (→ Image Bool))
+(define (pinned? i) (contains? (Image.raw i) "@sha256:"))
+
+; Order properties. A plan, followed for each outcome of the branches, is a history: true
+; observations (seen) and realized outputs (done), in the order they happen; then concatenates,
+; branch chooses. Directories are not entered, so the properties hold for an abstract input too:
+; (Π ((src Dir)) (Before … (release src))). An observation in the history says that test answered
+; yes at that moment: it is that test's truth, not the world's, and it does not become an axiom.
+
+(data Event
+  (seen (Remote Bool))
+  (done (Export Dir)))
+
+(claim histories (→ (Export Dir) (List (List Event))))
+(define (histories n)
+  (match n
+    ((branch c a b) (++ (map (:: (seen c)) (histories a)) (histories b)))
+    ((then a b)     (concat-map (λ (h) (map (++ h) (histories b))) (histories a)))
+    (skip           (list (list)))
+    ((otherwise a b) (++ (histories a) (histories b)))   ; b after a failure of a: the worst case, b alone
+    (e              (list (list (done e))))))
+
+; (earlier w? e? g h): in h, every output satisfying e? comes after an event satisfying w?.
+(claim allowed? (→ (→ (Export Dir) Bool) Bool Event Bool))
+(define (allowed? e? g n)
+  (match n
+    ((seen _) true)
+    ((done x) (if (e? x) g true))))
+
+(claim earlier (→ (→ Event Bool) (→ (Export Dir) Bool) Bool (List Event) Bool))
+(define (earlier w? e? g n)
+  (match n
+    (nil       true)
+    ((:: x xs) (and (allowed? e? g x) (earlier w? e? (or g (w? x)) xs)))))
+
+(claim seen? (→ (→ (Remote Bool) Bool) Event Bool))
+(define (seen? t? n)
+  (match n
+    ((seen c) (t? c))
+    ((done _) false)))
+
+(claim done? (→ (→ (Export Dir) Bool) Event Bool))
+(define (done? s? n)
+  (match n
+    ((done x) (s? x))
+    ((seen _) false)))
+
+; (Before t? e? p): every output satisfying e? happens after a true observation satisfying t?.
+(claim Before (→ (→ (Remote Bool) Bool) (→ (Export Dir) Bool) (Export Dir) Type))
+(define (Before t? e? p) (So (all (earlier (seen? t?) e? false) (histories p))))
+
+; (Precedes s? e? p): every output satisfying e? happens after an output satisfying s?.
+(claim Precedes (→ (→ (Export Dir) Bool) (→ (Export Dir) Bool) (Export Dir) Type))
+(define (Precedes s? e? p) (So (all (earlier (done? s?) e? false) (histories p))))
+
+(claim test? (→ (Remote Bool) Bool))        ; a test, in the container or on the world
+(define (test? n)
+  (match n
+    ((passes? _) true)
+    ((probe _ _) true)
+    (_           false)))
+
+(claim publish? (→ (Export Dir) Bool))
+(define (publish? n)
+  (match n
+    ((publish _ _) true)
+    (_             false)))
+
+(claim apply? (→ (Export Dir) Bool))
+(define (apply? n)
+  (match n
+    ((apply _ _) true)
+    (_           false)))
+
+; Mounts along a container's chain: where directories, files and caches are placed.
+; Two different containers do not compete for the file system, so only the chain is looked at
+; (chain), which does not go down into the arguments: the property holds for every source.
+
+(claim mount-of (→ Any (List Abs)))
+(define (mount-of n)
+  (match n
+    ((any (Container.with-directory _ path _))         (list path))
+    ((any (Container.with-file _ path _))              (list path))
+    ((any (Container.with-mounted-directory _ path _)) (list path))
+    ((any (Container.with-mounted-file _ path _))      (list path))
+    ((any (Container.with-mounted-cache _ path _))     (list path))
+    (_                                                 (list))))
+
+(claim mounts (→ (Obj k) (List Abs)))
+(define (mounts p) (concat-map mount-of (chain p)))
+
+(claim Disjoint-mounts (→ (Obj k) Type))
+(define (Disjoint-mounts p) (Pairwise ⋔ (mounts p)))
+
+; Ports exposed along a container's chain: no port allocated twice.
+
+(claim port-of (→ Any (List Port)))
+(define (port-of n)
+  (match n
+    ((any (Container.with-exposed-port _ p)) (list p))
+    (_                                       (list))))
+
+(claim ports (→ (Obj k) (List Port)))
+(define (ports p) (concat-map port-of (chain p)))
+
+(claim Distinct-ports (→ (Obj k) Type))
+(define (Distinct-ports p) (Pairwise port≠ (ports p)))

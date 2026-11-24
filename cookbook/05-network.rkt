@@ -1,0 +1,68 @@
+#lang disegno
+; 05 — Una rete come dato: subnet, porte, finestre
+;
+; La configurazione dell'infrastruttura è un valore tipato, e le regole che oggi stanno in
+; review e convenzioni sono teoremi: subnet disgiunte e dentro la VPC, nessuna porta allocata
+; due volte, finestre di manutenzione che non si sovrappongono. Il file di configurazione si
+; genera dagli stessi valori, quindi non può divergere da ciò che è stato provato.
+;
+;   racket cookbook/05-network.rkt plan
+;   racket cookbook/05-network.rkt run      scrive cookbook/net/network.txt
+
+(require disegno/lib/dagger bottega/lib/time bottega/lib/net)
+
+(claim vpc Cidr)
+(define vpc "10.0.0.0/16")
+
+(record Subnet
+  (name String)
+  (block Cidr))
+
+(claim subnets (List Subnet))
+(define subnets
+  (list (subnet "app"  "10.0.1.0/24")
+        (subnet "db"   "10.0.2.0/24")
+        (subnet "mgmt" "10.0.255.0/24")))
+
+(claim inside? (→ Cidr Cidr Bool))               ; c sta dentro outer
+(define (inside? outer c) (within? (cidr-range c) (cidr-range outer)))
+
+(claim subnet-disgiunte (Disjoint-subnets (map Subnet.block subnets)))
+(define subnet-disgiunte auto)
+
+(claim subnet-nella-vpc (All (inside? vpc) (map Subnet.block subnets)))
+(define subnet-nella-vpc auto)
+
+; --- un servizio con le sue porte ---
+
+(claim servizio Container)
+(define servizio
+  (pipe (container)
+        (from "nginx:1.27")
+        (with-exposed-port 80)
+        (with-exposed-port 443)
+        (with-exposed-port 9113)))
+
+(claim porte-distinte (Distinct-ports servizio))
+(define porte-distinte auto)
+
+; --- finestre di manutenzione ---
+
+(claim finestra-db Interval)
+(define finestra-db (window "2026-10-18T02:00:00Z" "2h"))
+(claim finestra-app Interval)
+(define finestra-app (window "2026-10-18T04:00:00Z" "1h"))
+
+(claim finestre-separate (Apart finestra-db finestra-app))
+(define finestre-separate auto)
+
+; --- la configurazione, resa dagli stessi valori ---
+
+(claim render (→ (List Subnet) String))
+(define (render n)
+  (match n
+    (nil       "")
+    ((:: s ss) (string-append (Subnet.name s) " = " (render-cidr (Subnet.block s)) "\n" (render ss)))))
+
+(claim main (Π ((src (Host "."))) (Export Dir)))
+(define (main _) (overlay "net" (with-file empty /network.txt (render subnets))))

@@ -1,3 +1,7 @@
 compiled/
 .direnv/
 result*
+dagger.lock
+cookbook/bin/
+cookbook/out/
+cookbook/reports/

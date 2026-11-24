@@ -113,6 +113,7 @@
 (define (check-define d)
   (match-define (d-define loc name type clauses _) d)
   (define t (at loc (fresh-name! name) (elaborate-signature type)))   ; at the claim
+  (record-signature! name t)
   (check-definition name t clauses))
 
 ;; Also used by the elaborator, for the auxiliary defines of match and auto.
@@ -444,8 +445,8 @@
 ;; (builtin nat Nat): trusted like extern, only the kind of the name is checked.
 (define (check-builtin key name)
   (unless (privileged) (oops "builtin is reserved to the standard library"))
-  (define kind (assq key builtin-keys))
+  (define kind (builtin-key-kind key))
   (unless kind (oops "builtin: unknown key ~a" key))
   (when (builtin key) (oops "builtin: ~a is already bound to ~a" key (builtin key)))
-  (unless (global-kind? name (cdr kind)) (oops "builtin ~a: ~a is not a ~a" key name (cdr kind)))
+  (unless (global-kind? name kind) (oops "builtin ~a: ~a is not a ~a" key name kind))
   (bind-builtin! key name))

@@ -1,0 +1,28 @@
+#lang disegno
+; 01 — File: leggere dall'host, costruire, scrivere
+;
+; Il programma non tocca il disco: dichiara cosa riceve, (Host "percorso") nella firma di main,
+; e cosa restituisce, un Export. Le directory sono valori immutabili: scrivere è costruirne una
+; nuova. I percorsi relativi si intendono rispetto alla cartella di questo file.
+;
+;   racket cookbook/01-files.rkt plan     il piano: un documento GraphQL
+;   racket cookbook/01-files.rkt run     lo scrive in cookbook/out/
+
+(require disegno/lib/dagger)
+
+(claim web Port)
+(define web 8080)
+
+; Una configurazione resa come testo: concat e show calcolano sui letterali.
+(claim config String)
+(define config (string-append "[server]\nporta = " (show (Port.n web)) "\n"))
+
+(claim con-config (→ Dir Dir))
+(define (con-config src)
+  (pipe src
+        (with-file /config/app.toml config)
+        (with-file /LEGGIMI "generato da Disegno\n")))
+
+; overlay aggiunge al contenuto della destinazione; replace la sostituisce (export con wipe).
+(claim main (Π ((src (Host "hello"))) (Export Dir)))
+(define (main src) (overlay "out" (con-config src)))
