@@ -1,0 +1,80 @@
+#lang disegno
+; Files: directories built as values, what they write, and observations on the contents.
+; A file's contents never come back to the language: Dagger looks at them, in a container, and
+; the program gets an observation (Remote Bool) to use with branch, as for passes?.
+
+(require "dagger.rkt")
+
+; --- building ---
+
+; A file with its name: the name is a Segment, so "a/b" or "" do not pass.
+(claim file (→ Segment String File))
+(define (file n contents) (Query.file (Segment.name n) contents))
+
+(claim file-of (→ Dir Abs File))
+(define (file-of d path) (Directory.file d path))
+
+(claim put-file (→ Dir Abs File Dir))
+(define (put-file d path f) (Directory.with-file d path f))
+
+(claim merge (→ Dir Dir Dir))                   ; b over a, from the root
+(define (merge a b) (Directory.with-directory a root b))
+
+; Selecting by glob, as Dagger does: (only src (list "**/*.go" "go.mod")),
+; (except src (list "**/*_test.go")).
+; ponytail: globs are not checked while typing; a Glob refined with re? if it is ever needed.
+(claim only (→ Dir (List String) Dir))
+(define (only d globs) (Directory.filter d (list) globs))
+
+(claim except (→ Dir (List String) Dir))
+(define (except d globs) (Directory.filter d globs (list)))
+
+; --- what a directory writes: the paths along its construction chain ---
+; As with a container's mounts, only the chain is looked at (chain), which does not go down into
+; the arguments: the properties hold for every source.
+
+(claim write-of (→ Any (List Abs)))
+(define (write-of n)
+  (match n
+    ((any (Directory.with-new-file _ path _ _))    (list path))
+    ((any (Directory.with-file _ path _))          (list path))
+    ((any (Directory.with-directory _ path _))     (list path))
+    ((any (Directory.with-new-directory _ path))   (list path))
+    (_                                             (list))))
+
+(claim writes (→ (Obj k) (List Abs)))
+(define (writes p) (concat-map write-of (chain p)))
+
+; No write covers another: neither the same path twice, nor one inside the other.
+(claim Disjoint-writes (→ (Obj k) Type))
+(define (Disjoint-writes p) (Pairwise ⋔ (writes p)))
+
+; Everything written lies under r.
+(claim Writes-within (→ Abs (Obj k) Type))
+(define (Writes-within r p) (Every (λ (q) (⊑ q r)) (writes p)))
+
+; --- observations on the contents, computed by Dagger ---
+; The text reaches the command as an argument, it does not go through a shell. They are
+; observations of passes?, so for Before they count as tests.
+; ponytail: a malformed regular expression makes grep exit with 2, that is «false»; a refined
+; Regex type would reject it earlier, if it is ever needed.
+
+(claim toolbox Container)
+(define toolbox (pipe (container) (from "busybox@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e")))
+
+(claim file-passes? (→ File (List Arg) (Remote Bool)))
+(define (file-passes? f cmd) (passes? (pipe toolbox (Container.with-file /f f) (try-exec cmd))))
+
+(claim includes? (→ File String (Remote Bool)))  ; the text occurs in the file
+(define (includes? f s) (file-passes? f (list "grep" "-qF" s "/f")))
+
+(claim matches? (→ File String (Remote Bool)))   ; a line matches the extended regular expression
+(define (matches? f re) (file-passes? f (list "grep" "-qE" re "/f")))
+
+(claim empty? (→ File (Remote Bool)))            ; the file is empty
+(define (empty? f) (file-passes? f (list "sh" "-c" "! test -s /f")))
+
+(claim same-content? (→ File File (Remote Bool)))
+(define (same-content? a b)
+  (passes? (pipe toolbox (Container.with-file /a a) (Container.with-file /b b)
+                 (try-exec (list "cmp" "-s" "/a" "/b")))))

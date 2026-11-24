@@ -3,9 +3,8 @@
 ;; theorems), the outer design (plan: the GraphQL, one per outcome of the branches), the work
 ;; (run: the execution on Dagger). A program's main submodule calls main-program.
 ;;   racket prog.rkt [check|plan|run]    default: run under a Dagger session, plan otherwise
-;; ponytail: the live run prints the outcomes; the per-item report (logs, timings) comes in 4c.
 
-(require racket/match racket/list racket/path racket/port
+(require racket/match racket/list racket/path racket/port racket/string
          bottega/check bottega/core/state "dialect.rkt" "plan.rkt" "graphql.rkt" "session.rkt")
 (provide main-program plan-text)
 
@@ -42,25 +41,50 @@
 (define (resolve-live ch) (query (format "{ ~a }" (chain->graphql (append ch '((id)))))))
 
 (define (observe-live ch)
-  (match (query (format "{ ~a }" (chain->graphql ch)))
-    [(? boolean? b) b]
-    [(? number? n) (= n 0)]
-    [r (oops "observation not boolean: ~s" r)]))
+  (define b (match (timed (command ch) (λ () (query (format "{ ~a }" (chain->graphql ch)))))
+              [(? boolean? b) b]
+              [(? number? n) (= n 0)]
+              [r (oops "observation not boolean: ~s" r)]))
+  (printf "↳ ~a → ~a\n" (command ch) (if b "yes" "no"))
+  b)
 
+;; The report: one line per output, with its time; a failing step shows the end of its stderr.
+;; ponytail: lines say the command, not the definition's docstring; Chez tracked which definition
+;; each step came from (and streamed the OTel logs). Add both when CI needs grouped output.
 (define (run-plan entry)
   (parameterize ([observe observe-live]
                  [realize-dry #f]
+                 [read-secret (λ (ch) (timed "reading a secret" (λ () (query (format "{ ~a }" (chain->graphql ch))))))]
                  [run-id (number->string (current-milliseconds))])
     (realize (entry-value entry) resolve-live
              (λ (ch)
-               (query (format "{ ~a }" (chain->graphql ch)))
-               (printf "✓ ~a\n" (outcome ch))))))
+               (define t (timed (outcome ch) (λ () (query (format "{ ~a }" (chain->graphql ch))))
+                                #:seconds #t))
+               (printf "✓ ~a  ~as\n" (outcome ch) t)))))
+
+;; Runs thunk; on an engine error prints ✗ what, the exit code and the last lines of stderr.
+;; → the result, or with #:seconds the time it took.
+(define (timed what thunk #:seconds [seconds? #f])
+  (define t0 (current-inexact-milliseconds))
+  (define r (with-handlers ([exn:engine? (λ (e) (report-failure what e) (raise e))]) (thunk)))
+  (if seconds? (/ (round (/ (- (current-inexact-milliseconds) t0) 100)) 10.) r))
+
+(define (report-failure what e)
+  (define x (exn:engine-extensions e))
+  (printf "✗ ~a~a\n" what (let ([c (hash-ref x 'exitCode #f)]) (if c (format "  exit ~a" c) "")))
+  (define lines (string-split (hash-ref x 'stderr "") "\n"))
+  (for ([l (take-right lines (min 20 (length lines)))]) (printf "  │ ~a\n" l)))
+
+(define (command ch)                              ; the last command of a chain
+  (match (filter (λ (f) (eq? (car f) 'withExec)) ch)
+    ['() (chain->graphql (list (last ch)))]
+    [es (string-join (map (λ (a) (if (string? a) a (format "~a" a))) (cadr (assq 'args (cdr (last es))))) " ")]))
 
 (define (outcome ch)                              ; what an output did, in words
   (match (last ch)
     [(list 'export (list 'path p) _) (format "exported ~a" p)]
     [(list 'publish (list 'address a)) (format "published ~a" a)]
-    [_ (chain->graphql (list (last (filter (λ (f) (eq? (car f) 'withExec)) ch))))]))
+    [_ (command ch)]))
 
 ;; The dry plan of a program, as text: what `racket prog.rkt plan` prints.
 (define (plan-text file)

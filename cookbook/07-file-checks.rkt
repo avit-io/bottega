@@ -1,0 +1,43 @@
+#lang disegno
+; 07 — File: che cosa si scrive, e il contenuto guardato da Dagger
+;
+; Le directory sono valori del motore. Il programma sa che cosa scrive, e lo prova; del
+; contenuto dei file non sa niente: lo guarda Dagger, in un container, e il programma riceve
+; solo un'osservazione per scegliere il ramo. Il piano contiene entrambi i rami, e i teoremi
+; valgono per tutti e due.
+;
+;   racket cookbook/07-file-checks.rkt plan     un piano per ogni esito del controllo
+;   disegno run  cookbook/07-file-checks.disegno     scrive in cookbook/out/
+
+(require disegno/lib/files)
+
+; --- costruire: un sito sotto /site, con un file dato e i sorgenti copiati ---
+
+(claim sito (→ Dir Dir))
+(define (sito src)
+  (pipe empty
+        (with-file /site/index.html "<h1>ciao da Disegno</h1>\n")
+        (put-file /site/robots.txt (file "robots.txt" "User-agent: *\n"))
+        (put /site/src src)))
+
+; Che cosa scrive, per ogni sorgente: tutto sotto /site, e nessuna scrittura ne copre un'altra.
+(claim sito-in-site (Π ((src Dir)) (Writes-within /site (sito src))))
+(define (sito-in-site src) auto)
+
+(claim sito-disgiunto (Π ((src Dir)) (Disjoint-writes (sito src))))
+(define (sito-disgiunto src) auto)
+
+; Scrivere due volte lo stesso percorso è una sovrapposizione, e lo si prova.
+(claim doppio (¬ (Disjoint-writes (pipe empty (with-file /a "1") (with-file /a "2")))))
+(define doppio auto)
+
+; --- il contenuto: si sceglie il ramo da ciò che Dagger trova nel file ---
+
+(claim è-un-programma? (→ Dir (Remote Bool)))
+(define (è-un-programma? src) (includes? (file-of src /main.go) "package main"))
+
+(claim main (Π ((src (Host "hello"))) (Export Dir)))
+(define (main src)
+  (branch (è-un-programma? src)
+          (overlay "out" (sito src))
+          (overlay "out" (with-file empty /RIFIUTATO "main.go non è un programma\n"))))

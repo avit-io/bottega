@@ -171,8 +171,9 @@
      (list (d-data loc (syntax-e #'name) (parse-expr #'type)
                    (map (λ (k t) (cons k (parse-expr t))) (syntax->datum #'(k ...)) (syntax->list #'(kt ...)))))]
     [(data name:id k ...)
-     (list (d-data loc (syntax-e #'name) (s-type #f 0)
-                   (map (λ (k) (short-constructor #'name k)) (syntax->list #'(k ...)))))]
+     (cons (d-data loc (syntax-e #'name) (s-type #f 0)
+                   (map (λ (k) (short-constructor #'name k)) (syntax->list #'(k ...))))
+           (append* (map (λ (d) (parse-declaration d claims)) (name-declarations stx))))]
     [(record head field ...) (append* (map (λ (d) (parse-declaration d claims)) (record->declarations stx)))]
     [(extern name:id : type spec)
      (list (d-extern loc (syntax-e #'name) (parse-expr #'type) (syntax->datum #'spec)))]
@@ -193,6 +194,18 @@
     [(k:id) (cons (syntax-e #'k) (parse-expr d))]
     [(k:id arg ...+) (cons (syntax-e #'k) (parse-expr (rebuild ctor `(→ ,@(syntax->list #'(arg ...)) ,d))))]
     [_ (at (syntax-loc ctor) (oops "malformed constructor: ~s" (syntax->datum ctor)))]))
+
+;; A data of constructors without arguments also has D.name : (→ D String), the name of the
+;; constructor: the inverse of Host-choice. Only where String exists already.
+(define (name-declarations stx)
+  (syntax-parse stx
+    [(_ d:id (~or* k:id (k:id)) ...+)
+     #:when (builtin 'string)
+     (define name (string->symbol (format "~a.name" (syntax-e #'d))))
+     (define ks (syntax->datum #'(k ...)))
+     (list (rebuild stx `(claim ,name (→ ,(syntax-e #'d) ,(builtin 'string))))
+           (rebuild stx `(define (,name %x) (match %x ,@(for/list ([k ks]) `(,k ,(symbol->string k)))))))]
+    [_ '()]))
 
 ;; (record Service (name String) (replicas Nat) (ok (≥ replicas 1))) is sugar for a data with the
 ;; single constructor service, and the projections Service.name, Service.replicas, …

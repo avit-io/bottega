@@ -1,0 +1,69 @@
+#lang disegno
+; ArgoCD: sync an application and wait for it to be healthy. The server can be plain or in a
+; secret (Setting); authentication is a token or a user and password, all secrets.
+; Syncing is an effect; «is the application healthy?» is an observation, the truth of that moment.
+
+(require "dagger.rkt" "delivery.rkt")
+
+(data Argocd-auth
+  (token Secret)
+  (user-password Secret Secret))
+
+(record Argocd
+  (server Setting)                     ; argocd.example.com, without https://
+  (auth Argocd-auth)
+  (insecure Bool))                       ; true: does not verify the server's certificate
+
+(claim with-argocd-auth (→ Container Argocd-auth Container))
+(define (with-argocd-auth c n)
+  (match n
+    ((token t)           (with-secret-variable c "ARGOCD_AUTH_TOKEN" t))
+    ((user-password u p) (pipe c (with-secret-variable "ARGOCD_USERNAME" u) (with-secret-variable "ARGOCD_PASSWORD" p)))))
+
+(claim argocd-cli (→ Argocd Container))
+(define (argocd-cli ac)
+  (pipe (container)
+        (from "quay.io/argoproj/argocd@sha256:19ba7f44cba487c4a0c98ac336327c4df04383dff84f87ea1a578972eb62dd17")   ; v3.1.8
+        (with-setting "ARGOCD_SERVER" (Argocd.server ac))
+        (with-argocd-auth (Argocd.auth ac))
+        (with-env "ARGOCD_OPTS" (if (Argocd.insecure ac) "--grpc-web --insecure" "--grpc-web"))))
+
+; A CLI command: with a user and password the login comes first, in the same container.
+(claim argocd-script String)
+(define argocd-script "if [ -n \"$ARGOCD_USERNAME\" ]; then argocd login \"$ARGOCD_SERVER\" --username \"$ARGOCD_USERNAME\" --password \"$ARGOCD_PASSWORD\" >/dev/null; fi; exec argocd \"$@\"")
+
+(claim argocd-args (→ (List String) (List Arg)))
+(define (argocd-args xs) (++ (list "sh" "-c" argocd-script "argocd") (map arg-text xs)))
+
+; The sync starts asynchronously, with its retries; then it waits for health (argocd-wait).
+(claim argocd-sync (→ Argocd String (Export Dir)))
+(define (argocd-sync ac app)
+  (apply (argocd-cli ac) (argocd-args (list "app" "sync" app "--async" "--retry-limit" "5" "--retry-backoff-duration" "30s"
+                                            "--retry-backoff-factor" "2" "--timeout" "150"))))
+
+; Waits for the application to be healthy, up to timeout seconds; if it does not become so, it fails.
+(claim argocd-wait (→ Argocd String Nat (Export Dir)))
+(define (argocd-wait ac app timeout) (apply (argocd-cli ac) (argocd-args (list "app" "wait" app "--health" "--timeout" (show timeout)))))
+
+(claim argocd-healthy? (→ Argocd String (Remote Bool)))
+(define (argocd-healthy? ac app) (probe (argocd-cli ac) (argocd-args (list "app" "wait" app "--health" "--timeout" "30"))))
+
+(claim argocd-restart (→ Argocd String String (Export Dir)))   ; app, resource kind (Deployment, StatefulSet)
+(define (argocd-restart ac app kind) (apply (argocd-cli ac) (argocd-args (list "app" "actions" "run" app "restart" "--kind" kind))))
+
+(claim argocd-command? (→ String (Export Dir) Bool))   ; (argocd-command? "sync"): for Before and Precedes
+(define (argocd-command? op n)
+  (match n
+    ((apply _ (:: _ (:: _ (:: _ (:: (arg-text a) (:: (arg-text b) (:: (arg-text c) _)))))))
+     (and (same? a "argocd") (and (same? b "app") (same? c op))))
+    (_ false)))
+
+; ArgoCD as a Deployer (delivery): deploy syncs and waits for the application to be healthy;
+; restart restarts the application's Deployments.
+(claim argocd-deployer (→ Argocd Nat Deployer))          ; timeout in seconds
+(define (argocd-deployer ac timeout)
+  (deployer (λ (app) (begin
+                       (argocd-sync ac app)
+                       (argocd-wait ac app timeout)))
+            (argocd-healthy? ac)
+            (λ (app) (argocd-restart ac app "Deployment"))))

@@ -1,0 +1,47 @@
+#lang disegno
+; 10 — Un sito statico su S3, pubblicato dopo il test
+;
+; Il sito è una directory del piano, costruita con files; la pubblicazione è un effetto
+; (aws s3 sync); il controllo finale chiede a S3 se la pagina c'è e contiene il titolo.
+;
+; I teoremi: il sito non scrive due volte lo stesso percorso, e nessuna pubblicazione avviene
+; prima del test. Che S3 abbia risposto è la verità di quel controllo, in quel momento.
+;
+;   racket cookbook/10-aws-static-site.rkt plan
+;   disegno run  cookbook/10-aws-static-site.disegno   con AWS_ACCESS_KEY_ID e AWS_SECRET_ACCESS_KEY
+;
+; Per provarla senza un account: (emulated localstack) al posto di cloud, con (start localstack) e
+; un (make-bucket a b) prima della pubblicazione: LocalStack parte vuoto.
+
+(require disegno/lib/files disegno/lib/aws)
+
+(claim sito (→ Dir Dir))
+(define (sito src)
+  (pipe empty
+        (with-file /index.html "<h1>ciao da Disegno</h1>\n")
+        (put-file /robots.txt (file "robots.txt" "User-agent: *\n"))
+        (put /sorgenti (only src (list "*.go" "go.mod")))))
+
+(claim test (→ Dir (Remote Bool)))
+(define (test src) (includes? (file-of src /main.go) "package main"))
+
+(claim pubblica (→ Aws Bucket Dir (Export Dir)))
+(define (pubblica a b src)
+  (branch (test src)
+          (begin
+            (s3-sync a (sito src) b /site)
+            (unless (s3-includes? a b /site/index.html "ciao da Disegno")
+              (overlay "out" (with-file empty /PUBBLICAZIONE "la pagina non risulta su S3\n"))))
+          (overlay "out" (with-file empty /RIFIUTATO "main.go non è un programma\n"))))
+
+(claim main (Π ((id (Host-secret "AWS_ACCESS_KEY_ID")) (key (Host-secret "AWS_SECRET_ACCESS_KEY"))
+                (src (Host "hello"))) (Export Dir)))
+(define (main id key src) (pubblica (aws id key "eu-west-1" cloud) "disegno-sito-di-prova" src))
+
+; --- i teoremi: per ogni credenziale, bucket e sorgente ---
+
+(claim sito-disgiunto (Π ((src Dir)) (Disjoint-writes (sito src))))
+(define (sito-disgiunto src) auto)
+
+(claim test-prima-della-pubblicazione (Π ((a Aws) (b Bucket) (src Dir)) (Before test? (aws-command? "s3" "sync") (pubblica a b src))))
+(define (test-prima-della-pubblicazione a b src) auto)

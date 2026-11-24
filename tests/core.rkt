@@ -114,6 +114,10 @@
 (rejects "(claim direct-false ⊥)\n(define (direct-false n)\n  (match n\n    (())))" "too many patterns")
 (accepts "(claim one-is-not-zero (¬ (≡ 1 0)))\n(define one-is-not-zero auto)")
 
+;; an enumeration gets D.name, the constructor's name, where String exists
+(accepts "(require bottega/lib/text)\n(data Env (dev) qa)
+(claim qa-name (≡ (Env.name qa) \"qa\"))\n(define qa-name refl)")
+
 ;; --- records: projections, and invariants checked by auto ---
 
 (define service "(record Service (port Nat) (replicas Nat) (ok (≥ replicas 2)))\n")

@@ -1,0 +1,249 @@
+#lang disegno
+; AWS: the official CLI in a container pinned by digest, credentials as secrets, and to begin
+; with the Parameter Store. Writing a parameter is an effect (apply); asking whether it exists,
+; or whether it has a given text, is an observation of the world (probe): it drives the branch,
+; and the value does not come back to the language.
+
+(require "dagger.rkt" "delivery.rkt")
+
+; --- regions: a literal "eu-west-1" expected as a Region is checked while typing ---
+
+(claim regions (List String))
+(define regions
+  (list "us-east-1" "us-east-2" "us-west-1" "us-west-2" "ca-central-1" "sa-east-1"
+        "eu-west-1" "eu-west-2" "eu-west-3" "eu-central-1" "eu-central-2" "eu-north-1" "eu-south-1" "eu-south-2"
+        "ap-south-1" "ap-south-2" "ap-northeast-1" "ap-northeast-2" "ap-northeast-3"
+        "ap-southeast-1" "ap-southeast-2" "ap-southeast-3" "ap-east-1" "me-south-1" "me-central-1" "af-south-1"))
+
+(claim region? (→ String Bool))
+(define (region? s) (any? (same? s) regions))
+
+(record Region
+  (name String)
+  (ok (So (region? name))))
+
+; --- domain names, checked with a regular expression while typing ---
+
+(record Bucket                             ; an S3 bucket: 3–63 characters, lowercase, digits, . and -
+  (name String)
+  (ok (So (re? "[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]" name))))
+
+(record Arn                                ; arn:partition:service:region:account:resource
+  (raw String)
+  (ok (So (re? "arn:aws(-cn|-us-gov)?:[a-z0-9-]+:([a-z]{2}(-[a-z]+)+-[0-9])?:([0-9]{12})?:.+" raw))))
+
+; --- the credentials: two secrets from main's signature, and the region ---
+
+; Where AWS answers: the cloud, or a service emulating it (LocalStack) on port 4566. The service
+; is a value of the plan. Dagger starts it when a command bound to it runs and stops it when
+; nobody uses it any more: for state that must last from one step to the next, like an emulator,
+; begin with (start localstack), which keeps it alive until the end of the session.
+(data Endpoint
+  (cloud)
+  (emulated Service))
+
+(record Aws
+  (key-id Secret)
+  (secret-key Secret)
+  (region Region)
+  (endpoint Endpoint))
+
+(claim connect (→ Endpoint Container Container))
+(define (connect n c)
+  (match n
+    (cloud c)
+    ((emulated svc) (pipe c (with-service-binding "aws" svc) (with-env "AWS_ENDPOINT_URL" "http://aws:4566")))))
+
+(claim cli (→ Aws Container))
+(define (cli a)
+  (connect (Aws.endpoint a)
+           (pipe (container)
+                 (from "amazon/aws-cli@sha256:1a491b258590cc66866cd550f592edff80082f44daf1d903820daeca2f4954de")   ; 2.31.18
+                 (with-secret-variable "AWS_ACCESS_KEY_ID" (Aws.key-id a))
+                 (with-secret-variable "AWS_SECRET_ACCESS_KEY" (Aws.secret-key a))
+                 (with-env "AWS_DEFAULT_REGION" (Region.name (Aws.region a))))))
+
+; LocalStack, the AWS emulator, as a service: to try a plan without an account.
+(claim localstack Service)
+(define localstack
+  (pipe (container)
+        (from "localstack/localstack@sha256:59373b4a27dba3ec15c4db0b7455f0cb68c8a42300e2cbbe362b440f9a131697")   ; 4.9
+        (with-env "LOCALSTACK_HOST" "localhost:4566")                    ; not localhost.localstack.cloud, which needs public DNS
+        (with-exposed-port 4566)
+        (as-service true)))                                           ; with the image's entrypoint
+
+; --- Parameter Store: names are paths, /app/prod/db-host ---
+; ponytail: the CLI reads a value starting with file:// from that file; put-secure-parameter uses
+; it on purpose, a plain value shaped like that should be avoided.
+
+(claim put-parameter (→ Aws Abs String (Export Dir)))
+(define (put-parameter a name value)
+  (apply (cli a) (list "aws" "ssm" "put-parameter" "--name" name "--value" value
+                       "--type" "String" "--overwrite")))
+
+; A secret value does not go through the arguments: the secret is mounted as a file, and the CLI reads it.
+(claim put-secure-parameter (→ Aws Abs Secret (Export Dir)))
+(define (put-secure-parameter a name s)
+  (apply (with-mounted-secret (cli a) /run/disegno/value s)
+         (list "aws" "ssm" "put-parameter" "--name" name "--value" "file:///run/disegno/value"
+               "--type" "SecureString" "--overwrite")))
+
+(claim parameter-exists? (→ Aws Abs (Remote Bool)))
+(define (parameter-exists? a name) (probe (cli a) (list "aws" "ssm" "get-parameter" "--name" name)))
+
+; The container does the comparison: name and text arrive as positional arguments, not in the command.
+(claim parameter-is? (→ Aws Abs String (Remote Bool)))
+(define (parameter-is? a name value)
+  (probe (cli a) (list "sh" "-c" "test \"$(aws ssm get-parameter --name \"$1\" --query Parameter.Value --output text)\" = \"$2\""
+                       "sh" name value)))
+
+; --- what a plan writes to the Parameter Store, following its histories ---
+
+(claim parameter-of (→ (Export Dir) (List Abs)))
+(define (parameter-of n)
+  (match n
+    ((apply _ (:: (arg-text a) (:: (arg-text b) (:: (arg-text c) (:: _ (:: (arg-path p) _))))))
+     (if (and (same? a "aws") (and (same? b "ssm") (same? c "put-parameter"))) (list p) (list)))
+    (_ (list))))
+
+(claim written (→ Event (List Abs)))
+(define (written n)
+  (match n
+    ((done e) (parameter-of e))
+    ((seen _) (list))))
+
+(claim parameters (→ (Export Dir) (List Abs)))
+(define (parameters p) (concat-map (concat-map written) (histories p)))
+
+(claim ssm? (→ (Export Dir) Bool))               ; an output writing a parameter (like aws-command? "ssm" "put-parameter")
+(define (ssm? e) (any? (λ (_) true) (parameter-of e)))
+
+; Every parameter the plan can write lies under r.
+(claim Parameters-within (→ Abs (Export Dir) Type))
+(define (Parameters-within r p) (Every (λ (q) (⊑ q r)) (parameters p)))
+
+; An output running a CLI command: (aws-command? "s3" "sync"). For Before and Precedes:
+; (Before test? (aws-command? "s3" "sync") p), no publishing before the test.
+(claim aws-command? (→ String String (Export Dir) Bool))
+(define (aws-command? svc op n)
+  (match n
+    ((apply _ (:: (arg-text a) (:: (arg-text b) (:: (arg-text c) _)))) (and (same? a "aws") (and (same? b svc) (same? c op))))
+    (_ false)))
+
+; --- S3: a bucket and a prefix, s3://bucket/site; a directory of the plan is published ---
+
+(claim s3-uri (→ Bucket Abs String))
+(define (s3-uri b p) (string-append "s3://" (Bucket.name b) (render-abs p)))
+
+(claim make-bucket (→ Aws Bucket (Export Dir)))
+(define (make-bucket a b) (apply (cli a) (list "aws" "s3" "mb" (s3-uri b root))))
+
+; The directory goes into the container at /disegno/src, and the CLI syncs it: --delete removes
+; what is no longer there, so the prefix becomes exactly the directory.
+(claim s3-sync (→ Aws Dir Bucket Abs (Export Dir)))
+(define (s3-sync a d b p) (apply (with-dir (cli a) /disegno/src d) (list "aws" "s3" "sync" "/disegno/src" (s3-uri b p) "--delete")))
+
+(claim s3-put (→ Aws File Bucket Abs (Export Dir)))
+(define (s3-put a f b p) (apply (Container.with-file (cli a) /disegno/file f) (list "aws" "s3" "cp" "/disegno/file" (s3-uri b p))))
+
+(claim s3-exists? (→ Aws Bucket Abs (Remote Bool)))
+(define (s3-exists? a b p) (probe (cli a) (list "aws" "s3" "ls" (s3-uri b p))))
+
+; The container looks at the contents: the object goes through a pipe, the text as an argument.
+(claim s3-includes? (→ Aws Bucket Abs String (Remote Bool)))
+(define (s3-includes? a b p s) (probe (cli a) (list "sh" "-c" "aws s3 cp \"$1\" - | grep -qF \"$2\"" "sh" (s3-uri b p) s)))
+
+; --- secrets read at run time: the program says from where, the runner loads them when needed ---
+; Only the starting credential comes from main's signature (or from an IAM role); all the other
+; secrets are loaded by the pipeline. The value does not come back to the language: (secret-from
+; c cmd) is a Secret, which the runner hands to Dagger when a step uses it. The plan shows the command.
+
+(claim secrets-manager (→ Aws String Secret))    ; the whole SecretString
+(define (secrets-manager a id)
+  (secret-from (cli a) (list "aws" "secretsmanager" "get-secret-value" "--secret-id" id
+                             "--query" "SecretString" "--output" "text")
+               id))
+
+; A key of a JSON secret: the CLI cannot extract it, jq can, in the same container.
+; ponytail: Alpine with apk; a toolbox built with Nix and pinned by digest would replace it.
+(claim cli-jq (→ Aws Container))
+(define (cli-jq a)
+  (connect (Aws.endpoint a)
+           (pipe (container)
+                 (from "alpine@sha256:5291449c3df73caf6ed85e649dec1b9e818b39a5d8c871e97afc13e9cd5e8fa8")   ; 3.22
+                 (with-exec (list "apk" "add" "--no-cache" "aws-cli" "jq"))
+                 (with-secret-variable "AWS_ACCESS_KEY_ID" (Aws.key-id a))
+                 (with-secret-variable "AWS_SECRET_ACCESS_KEY" (Aws.secret-key a))
+                 (with-env "AWS_DEFAULT_REGION" (Region.name (Aws.region a))))))
+
+(claim secrets-manager-key (→ Aws String String Secret))
+(define (secrets-manager-key a id key)
+  (secret-from (cli-jq a)
+               (list "sh" "-c" "aws secretsmanager get-secret-value --secret-id \"$1\" --query SecretString --output text | jq -er --arg k \"$2\" '.[$k]'"
+                     "sh" id key)
+               (string-append id ":" key)))
+
+(claim ssm-secure (→ Aws Abs Secret))            ; a SecureString parameter, decrypted
+(define (ssm-secure a name)
+  (secret-from (cli a) (list "aws" "ssm" "get-parameter" "--name" name "--with-decryption"
+                             "--query" "Parameter.Value" "--output" "text")
+               (render-abs name)))
+
+; The first secret that exists among several ids, in order: when the same secret can live at
+; different levels (per environment, per platform, shared). With a chosen name: a Dockerfile
+; looks a secret up by id (RUN --mount=type=secret,id=ssh-key).
+(claim first-secret-script String)
+(define first-secret-script "k=\"$1\"; shift; for id in \"$@\"; do v=$(aws secretsmanager get-secret-value --secret-id \"$id\" --output json 2>/dev/null | jq -er '.SecretString // (.SecretBinary | @base64d)') || continue; if [ -z \"$k\" ]; then printf '%s' \"$v\"; else r=$(printf '%s' \"$v\" | jq -er --arg k \"$k\" '.[$k]') || exit 1; printf '%s' \"$r\"; fi; exit 0; done; echo \"none of: $*\" >&2; exit 1")
+
+(claim secrets-manager-first (→ Aws (List String) String Secret))        ; ids in order, name
+(define (secrets-manager-first a ids name) (secret-from (cli-jq a) (++ (list "sh" "-c" first-secret-script "sh" "") (map arg-text ids)) name))
+
+(claim secrets-manager-key-first (→ Aws (List String) String String Secret))   ; ids in order, key, name
+(define (secrets-manager-key-first a ids key name) (secret-from (cli-jq a) (++ (list "sh" "-c" first-secret-script "sh" key) (map arg-text ids)) name))
+
+; Like secrets-manager-key-first, but if no secret has the key it is default.
+(claim secrets-manager-key-first-or (→ Aws (List String) String String String Secret))   ; ids, key, default, name
+(define (secrets-manager-key-first-or a ids key default name)
+  (secret-from (with-env (cli-jq a) "DEFAULT" default)
+               (++ (list "sh" "-c" (string-append "(" first-secret-script ") 2>/dev/null || printf '%s' \"$DEFAULT\"") "sh" key) (map arg-text ids))
+               name))
+
+; An observation: does the key of the first existing secret have this text? (a mode, a flag)
+(claim secrets-manager-key-is? (→ Aws (List String) String String (Remote Bool)))   ; ids in order, key, value
+(define (secrets-manager-key-is? a ids key value)
+  (probe (with-env (cli-jq a) "WANT" value) (++ (list "sh" "-c" (string-append "test \"$(" first-secret-script ")\" = \"$WANT\"")
+                                                      "sh" key)
+                                                (map arg-text ids))))
+
+; --- ECR: the image registry. The password is read at run time, as a secret ---
+
+(record Account                            ; an AWS account: twelve digits
+  (id String)
+  (ok (So (re? "[0-9]{12}" id))))
+
+(claim ecr-registry (→ Account Region String))       ; 123456789012.dkr.ecr.eu-west-1.amazonaws.com
+(define (ecr-registry acc r) (string-append (Account.id acc) ".dkr.ecr." (Region.name r) ".amazonaws.com"))
+
+(claim ecr-image (→ Aws Account String String String)) ; repo, tag → registry/repo:tag
+(define (ecr-image a acc repo tag) (string-append (ecr-registry acc (Aws.region a)) "/" repo ":" tag))
+
+(claim ecr-password (→ Aws Secret))
+(define (ecr-password a) (secret-from (cli a) (list "aws" "ecr" "get-login-password") "ecr-password"))
+
+(claim ensure-repository (→ Aws String (Export Dir)))  ; creates the repository if missing
+(define (ensure-repository a repo)
+  (apply (cli a) (list "sh" "-c" "aws ecr describe-repositories --repository-names \"$1\" >/dev/null 2>&1 || aws ecr create-repository --repository-name \"$1\""
+                       "sh" repo)))
+
+(claim ecr-image-exists? (→ Aws String String (Remote Bool)))
+(define (ecr-image-exists? a repo tag) (probe (cli a) (list "aws" "ecr" "describe-images" "--repository-name" repo "--image-ids" (string-append "imageTag=" tag))))
+
+; ECR as a Registry: the push creates the repository if missing, then publishes with the current password.
+(claim ecr (→ Aws Account Registry))
+(define (ecr a acc)
+  (registry (ecr-image a acc)
+            (λ (c repo tag) (begin
+                              (ensure-repository a repo)
+                              (Registry.push (login-registry (ecr-registry acc (Aws.region a)) "AWS" (ecr-password a) direct)
+                                             c repo tag)))
+            (ecr-image-exists? a)))

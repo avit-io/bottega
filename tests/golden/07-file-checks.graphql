@@ -1,0 +1,5 @@
+# if container { from(address: "busybox@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e") { withFile(path: "/f", source: "<host { directory(path: \"cookbook/hello\") { file(path: \"/main.go\") } }>") { withExec(args: ["grep", "-qF", "package main", "/f"], expect: ANY) { exitCode } } } } → true
+directory { withNewFile(path: "/site/index.html", contents: "<h1>ciao da Disegno</h1>\n", permissions: 420) { withFile(path: "/site/robots.txt", source: "<file(name: \"robots.txt\", contents: \"User-agent: *\\n\")>") { withDirectory(path: "/site/src", source: "<host { directory(path: \"cookbook/hello\") }>") { export(path: "cookbook/out", wipe: false) } } } }
+
+# if container { from(address: "busybox@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e") { withFile(path: "/f", source: "<host { directory(path: \"cookbook/hello\") { file(path: \"/main.go\") } }>") { withExec(args: ["grep", "-qF", "package main", "/f"], expect: ANY) { exitCode } } } } → false
+directory { withNewFile(path: "/RIFIUTATO", contents: "main.go non è un programma\n", permissions: 420) { export(path: "cookbook/out", wipe: false) } }

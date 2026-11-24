@@ -1,0 +1,84 @@
+#lang disegno
+; Git and kustomize: the GitOps repo as a directory of the plan. The clone reads the world (a
+; branch moves) and so is not cached; the change is a computation on the directory; commit and
+; push are an effect. Whoever writes the program says the commits' author: it is their convention.
+; For a release pipeline: (kustomize-gitops url branch auth reach author), a Gitops (delivery).
+
+(require "dagger.rkt" "delivery.rkt")
+
+(claim git-tool Container)
+(define git-tool (pipe (container) (from "alpine/git@sha256:c0280cf9572316299b08544065d3bf35db65043d5e3963982ec50647d2746e26")))   ; 2.49.1
+
+; How to authenticate: nothing (a public repo, a test server) or an SSH key, which is a secret
+; mounted as a file.
+(data Git-auth
+  (anonymous)
+  (ssh-key Secret))
+
+(claim with-git-auth (→ Container Git-auth Container))
+(define (with-git-auth c n)
+  (match n
+    (anonymous   c)
+    ((ssh-key k) (pipe c
+                       (with-mounted-secret /run/disegno/ssh-key k)
+                       (with-env "GIT_SSH_COMMAND" "ssh -i /run/disegno/ssh-key -o StrictHostKeyChecking=accept-new")))))
+
+(claim git-in (→ Git-auth Reach Container))
+(define (git-in auth r) (reach (with-git-auth git-tool auth) r))
+
+(record Author
+  (name String)
+  (email String))
+
+; The branch as it is now: a shallow clone, outside the cache.
+(claim clone (→ String String Git-auth Reach Dir))                 ; url, branch
+(define (clone url n auth r)
+  (match n
+    (branch (dir-of (with-fresh-exec (git-in auth r) (list "git" "clone" "--depth" "1" "--branch" branch url "/repo"))
+                    /repo))))
+
+; Commit everything that changed and push to the branch. If nothing changed (the same tag
+; released again) there is no commit, and the push does nothing.
+(claim commit-and-push (→ Dir Author String String Git-auth Reach (Export Dir)))   ; repo, author, message, branch
+(define (commit-and-push repo who msg n auth r)
+  (match n
+    (branch
+     (apply (pipe (git-in auth r) (with-dir /repo repo) (with-workdir /repo))
+            (list "sh" "-c" "git add -A && (git diff --cached --quiet || git -c user.name=\"$3\" -c user.email=\"$4\" commit -m \"$1\") && git push origin HEAD:\"$2\""
+                  "sh" msg branch (Author.name who) (Author.email who))))))
+
+(claim git-command? (→ String (Export Dir) Bool))  ; (git-command? "push"): for Before and Precedes
+(define (git-command? op n)
+  (match n
+    ((apply _ (:: (arg-text a) (:: (arg-text b) (:: (arg-text c) _)))) (and (same? a "sh") (contains? c (string-append "git " op))))
+    (_ false)))
+
+; --- kustomize: an application's image, in its kustomization.yaml ---
+
+(claim kustomize-tool Container)
+(define kustomize-tool (pipe (container) (from "registry.k8s.io/kustomize/kustomize@sha256:937e7832dc0b09288b1398399dadb97382a27bbc35bee8fdcac47c7de4fff14d")))   ; v5.7.1
+
+; In repo, in the folder p (relative: "console/dev/app"), the image becomes image.
+(claim kustomize-set-image (→ Dir Rel String Dir))
+(define (kustomize-set-image repo p image)
+  (dir-of (pipe kustomize-tool
+                (with-dir /w repo)
+                (with-workdir (⊕ /w p))
+                (with-exec (list "kustomize" "edit" "set" "image" image)))
+          /w))
+
+(claim kustomize-set-images (→ Dir (List Rel) String Dir))   ; the same image in several folders
+(define (kustomize-set-images repo n image)
+  (match n
+    (nil repo)
+    ((:: p ps) (kustomize-set-images (kustomize-set-image repo p image) ps image))))
+
+; --- Gitops: clone, kustomize, commit and push, behind delivery's interface ---
+; One clone, all the folders, one commit: like someone updating blue and green by hand together.
+
+(claim kustomize-gitops (→ String String Git-auth Reach Author Gitops))   ; url, branch, authentication, reach, author
+(define (kustomize-gitops url n auth r who)
+  (match n
+    (branch
+     (gitops (λ (ps image msg) (commit-and-push (kustomize-set-images (clone url branch auth r) ps image)
+                                                who msg branch auth r))))))

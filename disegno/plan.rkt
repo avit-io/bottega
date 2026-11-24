@@ -10,7 +10,7 @@
          bottega/core/state bottega/core/term bottega/core/eval bottega/core/print
          "graphql.rkt")
 (provide entry-value realize all-plans resolve-dry
-         observe program-dir run-id realize-dry)
+         observe program-dir run-id realize-dry read-secret)
 
 (define observe (make-parameter (λ (ch) (oops "branch needs a Dagger session"))))
 (define program-dir (make-parameter (current-directory)))   ; relative Host and Export resolve here
@@ -70,8 +70,7 @@
     [(passes?) (method 'exitCode)]
     [(probe) (append (fresh-exec v resolve '(expect ANY)) '((exitCode)))]   ; the world, outside the cache
     [(with-fresh-exec) (fresh-exec v resolve)]
-    [(secret-from) (match-let ([(list _ cmd name) args])                    ; dry: the command, never a value
-                     (list `(secretFrom (name ,(gql-arg name resolve)) (args ,(gql-arg cmd resolve)))))]
+    [(secret-from) (secret v resolve)]
     ;; A secret's value is not in BuildKit's cache key: with secrets the build also gets
     ;; DISEGNO_RUN, so an ARG DISEGNO_RUN before the RUN that reads the secret reruns it.
     [(Directory.docker-build)
@@ -126,6 +125,28 @@
     (append (chain c resolve)
             (list `(withEnvVariable (name "DISEGNO_RUN") (value ,(fresh-nonce)))
                   `(withExec (args ,(gql-arg cmd resolve)) ,@fixed)))))
+
+;; Secrets read at run time: (secret-from c cmd name). Dry, the plan shows the command, never the
+;; value. Live, read-secret gets the chain that runs cmd in c (outside the cache) and returns its
+;; output; the secret goes to Dagger with setSecret, which masks it from then on. The value passes
+;; through the runner only, never the language; a secret is read once per run, keyed by its dry chain
+;; (live IDs change on every resolution).
+;; ponytail: the output file stays in the (local) engine's cache; a shared engine would need cleaning.
+(define read-secret (make-parameter #f))
+(define secrets (make-hash))                      ; (run-id name dry-chain) → the setSecret chain
+
+(define (secret v resolve)
+  (match-define (list c cmd name*) (args-of v))
+  (define name (gql-arg name* resolve))
+  (define (in-c resolve)
+    (append (chain c resolve)
+            (list `(withEnvVariable (name "DISEGNO_RUN") (value ,(fresh-nonce)))
+                  `(withExec (args ("sh" "-c" "\"$@\" > /tmp/disegno-secret" "sh" ,@(gql-arg cmd resolve))))
+                  '(file (path "/tmp/disegno-secret")) '(contents))))
+  (if (read-secret)
+      (hash-ref! secrets (list (run-id) name (chain->graphql (chain c resolve-dry)) (gql-arg cmd resolve-dry))
+                 (λ () (list `(setSecret (name ,name) (plaintext ,(string-trim ((read-secret) (in-c resolve)) "\n" #:left? #f #:repeat? #f))))))
+      (list `(secretFrom (name ,name) (args ,(gql-arg cmd resolve))))))
 
 ;; --- main's inputs, from its signature ---
 

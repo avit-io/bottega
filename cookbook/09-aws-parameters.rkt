@@ -1,0 +1,58 @@
+#lang disegno
+; 09 — AWS Parameter Store: la configurazione di un servizio, scritta dopo i test
+;
+; Le credenziali sono segreti dichiarati nella firma di main: il piano nomina le variabili
+; d'ambiente, mai i valori. Scrivere un parametro è un effetto; chiedere al Parameter Store se un
+; parametro vale un certo testo è un'osservazione, fatta dalla CLI in un container.
+;
+; I teoremi dicono che ogni parametro sta sotto /app/prod, che nessuno è scritto prima del test e
+; che nessuno si scrive due volte. Il controllo finale dice com'è andata quella volta: è la
+; verità di quel controllo, non un assioma sul Parameter Store.
+;
+;   racket cookbook/09-aws-parameters.rkt plan
+;   disegno run  cookbook/09-aws-parameters.disegno   con AWS_ACCESS_KEY_ID e AWS_SECRET_ACCESS_KEY
+;
+; Per provarla senza un account: (aws id key "eu-west-1" (emulated localstack)) al posto di cloud.
+; LocalStack gira come service di Dagger: con (start localstack) davanti resta vivo tra un passo e l'altro.
+
+(require disegno/lib/aws)
+
+; La configurazione: nomi come percorsi, valori come testo; la password è un segreto.
+(claim configura (→ Aws Secret (Export Dir)))
+(define (configura a password)
+  (begin
+    (put-parameter a /app/prod/db-host "db.internal")
+    (put-parameter a /app/prod/db-port "5432")
+    (put-secure-parameter a /app/prod/db-password password)))
+
+(claim test (→ Dir (Remote Bool)))
+(define (test src)
+  (passes? (try-exec (pipe (container) (from "busybox@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e")
+                           (with-dir /src src))
+                     (list "test" "-f" "/src/go.mod"))))
+
+(claim rilascio (→ Aws Secret Dir (Export Dir)))
+(define (rilascio a password src)
+  (branch (test src)
+          (begin
+            (configura a password)
+            (unless (parameter-is? a /app/prod/db-port "5432")
+              (overlay "out" (with-file empty /PARAMETRI "db-port non risulta scritto\n"))))
+          (overlay "out" (with-file empty /RIFIUTATO "il test non è passato\n"))))
+
+(claim main (Π ((id (Host-secret "AWS_ACCESS_KEY_ID")) (key (Host-secret "AWS_SECRET_ACCESS_KEY"))
+                (password (Host-secret "DB_PASSWORD")) (src (Host "hello"))) (Export Dir)))
+(define (main id key password src) (rilascio (aws id key "eu-west-1" cloud) password src))
+
+; --- i teoremi: per ogni credenziale, password e sorgente ---
+
+(claim sotto-prod (Π ((a Aws) (pw Secret) (src Dir)) (Parameters-within /app/prod (rilascio a pw src))))
+(define (sotto-prod a pw src) auto)
+
+(claim test-prima-dei-parametri (Π ((a Aws) (pw Secret) (src Dir)) (Before test? ssm? (rilascio a pw src))))
+(define (test-prima-dei-parametri a pw src) auto)
+
+(claim nessun-doppione (Π ((a Aws) (pw Secret)) (Pairwise ⋔ (parameters (configura a pw)))))
+(define (nessun-doppione a pw) auto)
+
+; Una regione che non esiste non si scrive: «eu-west-9» is not a valid Region.

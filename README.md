@@ -9,7 +9,7 @@ il type checker ne prova le proprietà, e un realizzatore che esiste già lo ese
 | `#lang` | Che cosa dichiara | Chi lo realizza | Stato |
 |---|---|---|---|
 | `bottega` | la logica: Π, Σ, ≡, `data`, `record`, match dipendente, `auto` | — | fatto |
-| `disegno` | la pipeline: il progetto, non l'esecuzione | Dagger (1.0 beta.28) | piano e run; resoconto e AWS in corso |
+| `disegno` | la pipeline: il progetto, non l'esecuzione | Dagger (1.0 beta.28) | piano e run, AWS, git, ArgoCD; parità con Chez anche su be-tsid |
 | `prospettiva` | un modello, molti ambienti come proiezioni; i teoremi sono le invarianti | Nix | da fare |
 | `affresco` | l'architettura di Elm, totale, lato server | un runtime Racket | da fare |
 
@@ -61,7 +61,7 @@ soluzioni degli esercizi.
 ```
 bottega/core/   il nucleo: superficie, elaborazione, kernel, definizioni
 bottega/lib/    la libreria standard: prelude, text, affine, paths, time, net
-disegno/        il dialetto: piano, runner, sessione, generatore; disegno/lib la libreria Dagger
+disegno/        il dialetto: piano, runner, sessione, generatore; disegno/lib le librerie: dagger, files, delivery, git, argocd, aws
 book/           il libro          cookbook/  le ricette di disegno
 tests/          i test e i golden  tools/     il logo
 ```
