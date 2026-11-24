@@ -44,8 +44,60 @@
         fi
         echo $name
       '';
+      # Bottega as a package: the repository's collections, compiled, and a racket that sees them.
+      # The flake's source is what git tracks, so compiled/ stays out.
+      bottega = pkgs.stdenvNoCC.mkDerivation {
+        pname = "bottega";
+        version = "0.1";
+        src = self;
+        nativeBuildInputs = [ pkgs.racket pkgs.makeWrapper ];
+        buildPhase = ''
+          export HOME=$TMPDIR PLTCOLLECTS="$PWD:"
+          raco make bottega/main.rkt bottega/lib/*.rkt prospettiva/render.rkt prospettiva/language.rkt \
+                    disegno/run.rkt disegno/language.rkt disegno/lib/*.rkt
+        '';
+        installPhase = ''
+          mkdir -p $out/share/bottega
+          cp -r info.rkt bottega prospettiva disegno $out/share/bottega/
+          makeWrapper ${pkgs.racket}/bin/racket $out/bin/racket --set PLTCOLLECTS "$out/share/bottega:"
+          makeWrapper ${pkgs.racket}/bin/raco $out/bin/raco --set PLTCOLLECTS "$out/share/bottega:"
+        '';
+      };
+
+      # A prospettiva model, built: its types and theorems are checked, and every environment
+      # becomes <env>/values.yaml in the output. No IFD: Nix builds the files, it does not read them.
+      #   bottega.lib.prospettiva { src = ./.; model = "model.rkt"; }
+      # ponytail: one derivation for all the environments; one each would mean listing them here too.
+      prospettiva = { src, model, name ? "prospettiva" }:
+        pkgs.runCommand name { } ''
+          export HOME=$TMPDIR
+          ${bottega}/bin/racket ${src}/${model} render $out
+        '';
     in {
-      packages.${system} = { inherit dagger; };
+      packages.${system} = {
+        inherit dagger bottega;
+        default = bottega;
+        example = prospettiva { src = ./cookbook/prospettiva; model = "service.rkt"; name = "service"; };
+      };
+
+      lib = { inherit prospettiva; };
+
+      # nix flake check: the example's theorems, and the test suite.
+      checks.${system} = {
+        example = self.packages.${system}.example;
+        tests = pkgs.runCommand "bottega-tests" { } ''
+          export HOME=$TMPDIR
+          cp -r ${self} src && chmod -R u+w src && cd src
+          PLTCOLLECTS="$PWD:" ${pkgs.racket}/bin/raco test tests/ disegno/graphql.rkt bottega/core/primitives.rkt
+          touch $out
+        '';
+      };
+
+      # nix flake init -t github:avit-io/bottega#prospettiva
+      templates.prospettiva = {
+        path = ./cookbook/prospettiva;
+        description = "A prospettiva model: one service, its environments as projections, built by Nix";
+      };
 
       # PLTCOLLECTS: the repository is the bottega collection, without raco pkg install.
       devShells.${system}.default = pkgs.mkShell {

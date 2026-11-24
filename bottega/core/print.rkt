@@ -3,7 +3,7 @@
 ;; Refined literals print as they are written: /out/bin, "bin/hello", "10.0.0.5", "alpine".
 
 (require racket/match racket/list racket/string "state.rkt" "term.rkt" "primitives.rkt")
-(provide term->sexp)
+(provide term->sexp literal-of)
 
 ;; names: the names of the bound variables, innermost first.
 (define (term->sexp names t)

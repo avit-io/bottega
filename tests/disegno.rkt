@@ -2,7 +2,7 @@
 ;; #lang disegno: the cookbook's dry plans, the same GraphQL as the Chez disegno's (tests/golden),
 ;; and the programs that must be rejected.
 
-(require rackunit racket/file racket/string racket/runtime-path
+(require rackunit racket/file racket/string racket/path racket/runtime-path
          bottega/check disegno/run (only-in disegno/dialect languages))
 
 (define-runtime-path root "..")
@@ -14,7 +14,7 @@
                    (string-replace s (path->string (simplify-path (path->complete-path root))) "")
                    "<run>-N"))
 
-(for ([g (directory-list golden)])
+(for ([g (directory-list golden)] #:when (path-has-extension? g #".graphql"))
   (define recipe (build-path root "cookbook" (path-replace-extension g #".rkt")))
   (check-equal? (normalize (plan-text recipe)) (file->string (build-path golden g)) (path->string g)))
 
