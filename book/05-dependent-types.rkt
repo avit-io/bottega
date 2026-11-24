@@ -1,3 +1,4 @@
+#lang bottega
 ; Capitolo 5 — Tipi che dipendono da valori
 ;
 ; Il primo elemento di una lista: che cosa restituire se la lista è vuota? Con le liste della
@@ -12,14 +13,14 @@
 ; un'eliminazione deve rispondere a ogni introduzione, e nil è un'introduzione di List. Il
 ; rimedio non è un valore d'errore. È un tipo che sa quanti elementi ci sono.
 ;
-;   disegno check book/05-dependent-types.disegno
+;   raco make book/05-dependent-types.rkt
 
 ; --- una famiglia di tipi ---
 ; (Vec A n) è il tipo dei vettori di n elementi di tipo A. Non è un tipo solo: è una famiglia,
 ; un tipo per ogni n. Le introduzioni dicono quale membro della famiglia costruiscono: vnil sta
 ; in (Vec A zero), e vcons, da un vettore di n elementi, ne fa uno di (add1 n).
 
-(import text)
+(require bottega/lib/text)
 
 (data Vec : (→ Type Nat Type)
   (vnil  : (Vec A zero))

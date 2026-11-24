@@ -1,3 +1,4 @@
+#lang bottega
 ; Capitolo 3 — Funzioni
 ;
 ; Anche le funzioni sono un tipo con un'introduzione e un'eliminazione. (→ A B) si introduce con
@@ -5,7 +6,7 @@
 ; costruita è la solita deviazione, e il calcolo la elimina: ((λ (x) corpo) a) si riduce al corpo
 ; con a al posto di x. Si chiama β-riduzione.
 ;
-;   disegno check book/03-functions.disegno
+;   raco make book/03-functions.rkt
 
 ; --- introduzione: λ ---
 ; Una λ si controlla contro il tipo che si aspetta: qui (→ Nat Nat), quindi x è un Nat.

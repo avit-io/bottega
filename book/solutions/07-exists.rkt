@@ -1,6 +1,7 @@
+#lang bottega
 ; Soluzioni del capitolo 7 — Esiste
 ;
-;   disegno check book/solutions/07-exists.disegno
+;   raco make book/solutions/07-exists.rkt
 
 (data Vec : (→ Type Nat Type)
   (vnil  : (Vec A zero))

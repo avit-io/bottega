@@ -1,0 +1,55 @@
+#lang bottega
+(require "text.rkt" "affine.rkt")
+
+; --- IPv4 addresses: points in [0, 2³²). "10.0.0.5" is an Ip, "10.0.0.0/24" a Cidr block ---
+; The real group is modulo 2³²; Disegno rules out overflow: Ip.⊕ asks for the proof that it stays
+; in the space, so it is not the total + of the Affine record.
+
+(extern show-ip : (→ Nat String) %show-ip)
+
+(record Ip
+  (n Nat)
+  (ok (So (<? n 4294967296))))
+(builtin ip Ip)
+
+(claim Ip.⊕ (Π ((p Ip) (o Nat)) (→ (So (<? (+ (Ip.n p) o) 4294967296)) Ip)))
+(define (Ip.⊕ p o h) (ip (+ (Ip.n p) o) h))
+
+(record Cidr                               ; the block prefix·2^(32−len) … of length 2^(32−len)
+  (prefix Nat)
+  (len Nat)
+  (ok (So (and (≤? len 32) (<? prefix (pow2 len))))))
+(builtin cidr Cidr)
+
+(claim cidr-range (→ Cidr Interval))
+(define (cidr-range c)
+  (let ((size (pow2 (∸ 32 (Cidr.len c))))
+        (lo (* (Cidr.prefix c) size)))
+    (interval lo (+ lo size))))
+
+(claim render-ip (→ Ip String))
+(define (render-ip a) (show-ip (Ip.n a)))
+
+(claim render-cidr (→ Cidr String))
+(define (render-cidr c) (string-append (show-ip (Interval.lo (cidr-range c))) "/" (show (Cidr.len c))))
+
+(claim in? (→ Ip Cidr Bool))
+(define (in? a c) (within? (interval (Ip.n a) (add1 (Ip.n a))) (cidr-range c)))
+
+(data Cidr-apart : (→ Cidr Cidr Type)
+  (cidr-apart : (Π ((a Cidr) (b Cidr)) (→ (So (apart? (cidr-range a) (cidr-range b))) (Cidr-apart a b)))))
+
+(claim Disjoint-subnets (→ (List Cidr) Type))
+(define (Disjoint-subnets cs) (Pairwise Cidr-apart cs))
+
+; --- ports: points on [0, 65535], without displacements; regions are intervals ---
+
+(record Port
+  (n Nat)
+  (ok (So (≤? n 65535))))
+
+(claim port-range (→ Port Port Interval))  ; [a, b] as a half-open interval
+(define (port-range a b) (interval (Port.n a) (add1 (Port.n b))))
+
+(data port≠ : (→ Port Port Type)
+  (port-distinct : (Π ((a Port) (b Port)) (→ (So (not (nat=? (Port.n a) (Port.n b)))) (port≠ a b)))))

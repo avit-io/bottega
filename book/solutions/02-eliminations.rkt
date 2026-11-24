@@ -1,6 +1,7 @@
+#lang bottega
 ; Soluzioni del capitolo 2 — Eliminare con armonia
 ;
-;   disegno check book/solutions/02-eliminations.disegno
+;   raco make book/solutions/02-eliminations.rkt
 
 (data Stagione
   (primavera)

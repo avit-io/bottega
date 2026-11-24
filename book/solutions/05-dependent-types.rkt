@@ -1,8 +1,9 @@
+#lang bottega
 ; Soluzioni del capitolo 5 — Tipi che dipendono da valori
 ;
-;   disegno check book/solutions/05-dependent-types.disegno
+;   raco make book/solutions/05-dependent-types.rkt
 
-(import text)
+(require bottega/lib/text)
 
 (data Vec : (→ Type Nat Type)
   (vnil  : (Vec A zero))

@@ -1,0 +1,42 @@
+#lang bottega
+(require "affine.rkt")
+
+; --- time: instants and durations, in seconds. "2026-10-15T10:00:00Z" is an instant, "1h30m" a duration ---
+
+(data Instant
+  (at Nat))
+(builtin instant Instant)
+
+(data Duration
+  (secs Nat))
+(builtin duration Duration)
+
+(claim Instant.⊕ (→ Instant Duration Instant))
+(define (Instant.⊕ n m)
+  (match* (n m)
+    (((at a) (secs d)) (at (+ a d)))))
+
+; On instants (billions of seconds) order is the decidable test, which auto computes; the law
+; goes through the inductive relation with the reflection lemma ≤-from.
+(claim ≥t (→ Instant Instant Type))        ; (≥t p q): p does not come before q
+(define (≥t n m)
+  (match* (n m)
+    (((at p) (at q)) (So (≤? q p)))))
+
+(claim Instant.⊖ (Π ((p Instant) (q Instant)) (→ (≥t p q) Duration)))
+(define (Instant.⊖ p q _)
+  (match* (p q)
+    (((at a) (at b)) (secs (∸ a b)))))
+
+(claim Instant.⊕-⊖ (Π ((p Instant) (q Instant) (h (≥t p q))) (≡ (Instant.⊕ q (Instant.⊖ p q h)) p)))
+(define (Instant.⊕-⊖ p q h)
+  (match* (p q)
+    (((at a) (at b)) (cong at (+-∸ a b (≤-from b a h))))))
+
+(claim time-affine (Affine Instant Duration ≥t))
+(define time-affine (affine Instant.⊕ Instant.⊖ Instant.⊕-⊖))
+
+(claim window (→ Instant Duration Interval)) ; a window: from the instant, for the duration
+(define (window n m)
+  (match* (n m)
+    (((at a) (secs d)) (interval a (+ a d)))))

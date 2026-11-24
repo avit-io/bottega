@@ -9,6 +9,10 @@
       system = "x86_64-linux";
       pkgs = nixpkgs.legacyPackages.${system};
     in {
-      devShells.${system}.default = pkgs.mkShell { packages = [ pkgs.racket ]; };
+      # PLTCOLLECTS: the repository is the bottega collection, without raco pkg install.
+      devShells.${system}.default = pkgs.mkShell {
+        packages = [ pkgs.racket ];
+        shellHook = ''export PLTCOLLECTS="$PWD:"'';
+      };
     };
 }

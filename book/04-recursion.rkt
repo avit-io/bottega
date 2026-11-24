@@ -1,3 +1,4 @@
+#lang bottega
 ; Capitolo 4 — Ricorsione e totalità
 ;
 ; Nel capitolo 2 somma chiamava sé stessa. Perché è lecito? Una definizione che chiama sé stessa
@@ -5,7 +6,7 @@
 ; una forma canonica, cadrebbe. Questo capitolo mostra quale ricorsione è ammessa, e perché proprio
 ; quella: è l'eliminazione di Nat, scritta per esteso.
 ;
-;   disegno check book/04-recursion.disegno
+;   raco make book/04-recursion.rkt
 
 ; --- la ricorsione strutturale ---
 ; In somma, la chiamata ricorsiva prende k, che sta dentro (add1 k): un pezzo più piccolo di ciò

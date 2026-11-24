@@ -1,0 +1,16 @@
+#lang bottega
+; Text: strings are opaque, but with pure primitives computed on literals.
+
+(extern String    : Type String)
+(builtin string String)
+(extern contains? : (→ String String Bool) %contains?)
+(extern concat    : (→ String String String) %concat)
+(extern show      : (→ Nat String) %show)
+(extern distinct? : (→ String String Bool) %distinct?)
+
+(claim same? (→ String String Bool))          ; two equal texts: (same? kind "rollback")
+(define (same? a b) (not (distinct? a b)))
+
+; (re? pattern s): all of s matches the regular expression. For refined domain types:
+; (record Bucket (name String) (ok (So (re? "[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]" name)))).
+(extern re? : (→ String String Bool) %re?)

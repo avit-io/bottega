@@ -1,6 +1,7 @@
+#lang bottega
 ; Soluzioni del capitolo 4 — Ricorsione e totalità
 ;
-;   disegno check book/solutions/04-recursion.disegno
+;   raco make book/solutions/04-recursion.rkt
 
 (claim ind-Nat (Π ((n Nat) (mot (→ Nat Type)))
                  (→ (mot zero)

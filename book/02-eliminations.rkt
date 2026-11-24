@@ -1,3 +1,4 @@
+#lang bottega
 ; Capitolo 2 — Eliminare con armonia
 ;
 ; Sappiamo costruire una stagione. Come la si usa? Per usare un elemento di un tipo bisogna
@@ -6,7 +7,7 @@
 ; ottenere da ciò che serviva a introdurlo. L'eliminazione non aggiunge niente alle introduzioni,
 ; le smonta.
 ;
-;   disegno check book/02-eliminations.disegno
+;   raco make book/02-eliminations.rkt
 
 (data Stagione
   (primavera)

@@ -1,6 +1,7 @@
+#lang bottega
 ; Soluzioni del capitolo 1 — Il significato è nelle introduzioni
 ;
-;   disegno check book/solutions/01-introductions.disegno
+;   raco make book/solutions/01-introductions.rkt
 
 (data Albero
   (foglia)

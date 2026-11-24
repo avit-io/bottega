@@ -1,6 +1,7 @@
+#lang bottega
 ; Soluzioni del capitolo 3 — Funzioni
 ;
-;   disegno check book/solutions/03-functions.disegno
+;   raco make book/solutions/03-functions.rkt
 
 ; 1. Zero volte è a stesso; (add1 k) volte è f applicata dopo k volte.
 

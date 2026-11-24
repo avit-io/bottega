@@ -1,3 +1,4 @@
+#lang bottega
 ; Capitolo 6 — L'uguaglianza
 ;
 ; Nei capitoli precedenti ≡ compariva nei teoremi, e auto li dimostrava calcolando. Qui ≡ diventa
@@ -5,7 +6,7 @@
 ; calcolando ma costruendo. Alla fine del capitolo l'accoda del capitolo 5 con il tipo
 ; (Vec A (+ m n)), che il checker rifiutava, passa.
 ;
-;   disegno check book/06-equality.disegno
+;   raco make book/06-equality.rkt
 
 ; --- l'introduzione: refl ---
 ; La libreria standard dichiara ≡ così:

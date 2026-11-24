@@ -22,7 +22,7 @@
 (define (parse-expr stx)
   (define loc (syntax-loc stx))
   (syntax-parse stx
-    #:datum-literals (TODO auto Type Π ∀ → λ lambda let let* list the pipe match match* cond else)
+    #:datum-literals (TODO auto Type Π ∀ → λ lambda let let* list the pipe match match* cond else string-append)
     [TODO (s-hole loc)]
     [auto (s-auto loc)]
     [Type (s-type loc 0)]
@@ -46,6 +46,10 @@
      (s-match loc (map parse-expr (syntax->list #'(x ...)))
               (parse-clauses (syntax->list #'(cl ...)) (length (syntax->list #'(x ...)))))]
     [(cond c ...+) (parse-cond (syntax->list #'(c ...)))]
+    [(string-append) (s-lit loc "")]
+    [(string-append s ...+)                       ; (concat a (concat b c)), text's concat
+     (for/foldr ([acc #f]) ([x (map parse-expr (syntax->list #'(s ...)))])
+       (if acc (s-app loc (s-name loc 'concat) (list x acc)) x))]
     [(kw:id . _) #:when (memq (syntax-e #'kw) declaration-keywords)
      (at loc (oops "~a: it is a declaration, not an expression" (syntax-e #'kw)))]
     [(f arg ...+) (s-app loc (parse-expr #'f) (map parse-expr (syntax->list #'(arg ...))))]
@@ -136,7 +140,7 @@
 (define (parse-declaration stx claims)
   (define loc (syntax-loc stx))
   (syntax-parse stx
-    #:datum-literals (claim define data record extern builtin :)
+    #:datum-literals (claim define data record extern builtin import :)
     [(claim name:id type)
      (define n (syntax-e #'name))
      (when (hash-ref claims n #f) (at loc (oops "~a: already claimed, the define is missing" n)))
@@ -158,6 +162,7 @@
     [(extern name:id : type spec)
      (list (d-extern loc (syntax-e #'name) (parse-expr #'type) (syntax->datum #'spec)))]
     [(builtin key:id name:id) (list (d-builtin loc (syntax-e #'key) (syntax-e #'name)))]
+    [(import m ...+) (at loc (oops "import is gone: (require bottega/lib/~a)" (car (syntax->datum #'(m ...)))))]
     [_ (at loc (oops "unknown declaration: ~s" (syntax->datum stx)))]))
 
 (define (make-define loc claims name doc clauses)

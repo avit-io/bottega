@@ -1,0 +1,39 @@
+#lang bottega
+; Affine spaces and regions on a line: the structure shared by paths, time and addresses.
+
+; An affine space: points P, displacements V, a relation ≤ saying when the difference exists.
+(record (Affine P V (≤ (→ P P Type)))
+  (+ (→ P V P))
+  (- (Π ((p P) (q P)) (→ (≤ p q) V)))
+  (law (Π ((p P) (q P) (h (≤ p q))) (≡ (+ q (- p q h)) p))))
+
+; --- naturals: the instance time and addresses derive from ---
+
+(claim ≥N (→ Nat Nat Type))                ; (≥N p q): the difference p ∸ q is exact
+(define (≥N p q) (≤ q p))
+
+(claim Nat.⊖ (Π ((p Nat) (q Nat)) (→ (≥N p q) Nat)))
+(define (Nat.⊖ p q _) (∸ p q))
+
+(claim nat-affine (Affine Nat Nat ≥N))
+(define nat-affine (affine + Nat.⊖ +-∸))
+
+; --- regions on a line: half-open intervals [lo, hi) ---
+; Time windows, CIDR blocks and port ranges are intervals; the natural propositions are
+; containment and disjointness.
+
+(record Interval
+  (lo Nat)
+  (hi Nat))
+
+(claim apart? (→ Interval Interval Bool))
+(define (apart? a b) (or (≤? (Interval.hi a) (Interval.lo b)) (≤? (Interval.hi b) (Interval.lo a))))
+
+(data Apart : (→ Interval Interval Type)
+  (apart : (Π ((a Interval) (b Interval)) (→ (So (apart? a b)) (Apart a b)))))
+
+(claim within? (→ Interval Interval Bool))  ; a lies inside b
+(define (within? a b) (and (≤? (Interval.lo b) (Interval.lo a)) (≤? (Interval.hi a) (Interval.hi b))))
+
+(claim Within (→ Interval Interval Type))
+(define (Within a b) (So (within? a b)))

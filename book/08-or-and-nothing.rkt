@@ -1,10 +1,11 @@
+#lang bottega
 ; Capitolo 8 — Oppure, e il nulla
 ;
 ; Restano due connettivi: «oppure» e «non». Il primo ha due introduzioni, il secondo non ne ha di
 ; sue: è una funzione verso il tipo che non ne ha nessuna. Alla fine del capitolo si vedrà perché
 ; Dummett, partendo dalle introduzioni, rinunciava al terzo escluso, e che cosa ne resta.
 ;
-;   disegno check book/08-or-and-nothing.disegno
+;   raco make book/08-or-and-nothing.rkt
 
 ; --- Either: due introduzioni ---
 ; La libreria standard:

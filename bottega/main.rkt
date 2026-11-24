@@ -1,4 +1,4 @@
 #lang racket/base
-;; Bottega's core, as a library. ponytail: it becomes #lang bottega in phase 3.
+;; Bottega's checker, as a library. The language itself is #lang bottega (lang/reader.rkt).
 (require "check.rkt")
 (provide check-file check-string)

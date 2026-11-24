@@ -1,6 +1,7 @@
+#lang bottega
 ; Soluzioni del capitolo 9 — Le prove come programmi
 ;
-;   disegno check book/solutions/09-proofs-as-programs.disegno
+;   raco make book/solutions/09-proofs-as-programs.rkt
 
 (claim Decidibile (→ Type Type))
 (define (Decidibile A) (Either A (¬ A)))
@@ -56,7 +57,7 @@
 
 ; 4. Una politica, e il teorema che il piano la rispetta.
 
-(import dagger)
+(require bottega/lib/dagger)
 
 (claim golang? (→ Image Bool))
 (define (golang? i) (contains? (Image.raw i) "golang"))

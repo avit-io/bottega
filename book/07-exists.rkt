@@ -1,3 +1,4 @@
+#lang bottega
 ; Capitolo 7 — Esiste
 ;
 ; Che cosa vuol dire dimostrare che esiste un numero il cui doppio è 4? Per un matematico classico
@@ -5,7 +6,7 @@
 ; Dummett, no: una prova di «esiste un x tale che P» è un x, insieme a una prova che P vale per
 ; quell'x. In Disegno questa è letteralmente la definizione: un'esistenza è una coppia.
 ;
-;   disegno check book/07-exists.disegno
+;   raco make book/07-exists.rkt
 
 ; --- l'introduzione: pair ---
 ; La libreria standard dichiara Σ così:
@@ -17,7 +18,7 @@
 ; pair, prende un a in A e un elemento di (B a): il tipo della seconda componente dipende dalla
 ; prima. Il primo elemento si chiama testimone.
 
-(import text)
+(require bottega/lib/text)
 
 (claim il-doppio-di-qualcosa (Σ Nat (λ (n) (≡ (+ n n) 4))))
 (define il-doppio-di-qualcosa (pair 2 refl))

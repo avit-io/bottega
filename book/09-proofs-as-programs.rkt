@@ -1,3 +1,4 @@
+#lang bottega
 ; Capitolo 9 — Le prove come programmi
 ;
 ; Lungo il libro programmi e prove si sono scritti allo stesso modo. Questo capitolo lo dice per
@@ -5,7 +6,7 @@
 ; auto quando dimostra qualcosa. Alla fine guarda a che cosa serve tutto questo in Disegno: provare
 ; proprietà di un piano prima di eseguirlo.
 ;
-;   disegno check book/09-proofs-as-programs.disegno
+;   raco make book/09-proofs-as-programs.rkt
 
 ; --- il dizionario ---
 ; Ogni connettivo è stato un tipo, e ogni sua regola un costrutto del linguaggio:
@@ -151,7 +152,7 @@
 ; immagini del piano, All chiede che il predicato valga per ognuna.
 
 ; Il piano, le immagini e i loro nomi stanno nel modulo dagger della libreria.
-(import dagger)
+(require bottega/lib/dagger)
 
 (claim senza-latest? (→ Image Bool))
 (define (senza-latest? i) (not (contains? (Image.raw i) ":latest")))

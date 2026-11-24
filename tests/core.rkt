@@ -13,12 +13,19 @@
 
 (define (accepts src) (check-not-exn (λ () (check-string src)) src))
 
-;; --- the book: chapters and solutions that need only the prelude ---
-;; ponytail: 05, 07 and 09 import text and dagger; they come back with #lang bottega (phase 3).
+;; --- the book: every chapter and solution is a #lang bottega module ---
+;; ponytail: chapter 9 requires the Dagger library; it comes back with #lang disegno (phase 4).
 
-(for ([f (find-files (λ (p) (regexp-match? #rx"[.]bottega$" p)) book)]
-      #:unless (regexp-match? #rx"/0[579]-" (path->string f)))
-  (check-not-exn (λ () (check-file f)) (path->string f)))
+(define chapters
+  (for/list ([f (find-files (λ (p) (regexp-match? #rx"/[0-9][^/]*[.]rkt$" (path->string p))) book)]
+             #:unless (regexp-match? #rx"/09-" (path->string f)))
+    f))
+(check-equal? (length chapters) 16)
+(for ([f chapters]) (check-not-exn (λ () (check-file f)) (path->string f)))
+
+;; hover: every declaration's type, for the editor
+(check-not-false (member "successore : (→ Nat Nat)"
+                         (map (λ (t) (vector-ref t 3)) (check-file (build-path book "03-functions.rkt")))))
 
 ;; --- acceleration is trusted: on small numbers it agrees with the unary clauses ---
 
@@ -51,8 +58,9 @@
 
 (rejects "(claim wrong (≡ 1 2))\n(define wrong refl)" "expected")
 (rejects "(claim wrong-auto (≡ (+ 1 1) 3))\n(define wrong-auto auto)" "expected")
-;; ponytail: the String tests ("a" ≢ "b", a mixed list) come back with (require bottega/text), phase 3.
-(rejects "(claim mixed (List Nat))\n(define mixed (list 1 Nat))" "expected")
+(rejects "(require bottega/lib/text)\n(claim different (≡ \"a\" \"b\"))\n(define different refl)" "expected")
+(rejects "(require bottega/lib/text)\n(claim mixed (List String))\n(define mixed (list \"a\" 1))" "expected")
+(rejects "(claim needs-text Nat)\n(define needs-text (show 1))" "unknown name: show")
 (rejects (string-append "(data Vec : (→ Type Nat Type) (vnil : (Vec A 0)) (vcons : (→ A (Vec A n) (Vec A (add1 n)))))\n"
                         "(claim head-of-empty (→ (Vec A 0) A))\n(define (head-of-empty vnil) vnil)")
          "expected")
@@ -61,7 +69,11 @@
 (rejects "(claim two Nat)\n(define two 1 2)" "define")
 (rejects "(claim pipe ⊥)\n(define pipe pipe)" "reserved word")
 
-;; --- the standard library's privileges ---
+;; --- modules and the standard library's privileges ---
+
+(rejects "(require bottega/lib/nowhere)" "module bottega/lib/nowhere not found")
+(rejects "(require racket/list)" "only bottega modules")
+(rejects "(import text)" "import is gone: (require bottega/lib/text)")
 
 (rejects "(extern lie : ⊥ nope)" "reserved to the standard library")
 (rejects "(claim theft Nat)\n(define theft %secret)" "reserved to the core")

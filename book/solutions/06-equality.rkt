@@ -1,6 +1,7 @@
+#lang bottega
 ; Soluzioni del capitolo 6 — L'uguaglianza
 ;
-;   disegno check book/solutions/06-equality.disegno
+;   raco make book/solutions/06-equality.rkt
 
 (claim +-add1 (Π ((n Nat) (m Nat)) (≡ (+ n (add1 m)) (add1 (+ n m)))))
 (define (+-add1 n m)

@@ -1,0 +1,78 @@
+#lang bottega
+(require "text.rkt" "affine.rkt")
+
+; --- Points do not add up: the file system as an affine space ---
+; A point is the root plus steps: /out is (/ root "out"). A vector is a sequence of steps:
+; "bin/hello". Point ⊕ vector = point; point ⊖ point = vector, only if one contains the other;
+; point + point cannot even be written: / wants a Segment.
+; Without .. vectors are a monoid, not a group: that is why the difference is partial.
+
+(extern segment? : (→ String Bool) %segment?)
+
+(record Segment
+  (name String)
+  (ok (So (segment? name))))
+(builtin segment Segment)
+
+(data Abs
+  (root)
+  (/ Abs Segment))
+(builtin abs Abs)
+(builtin root root)
+(builtin slash /)
+
+(data Rel
+  (here)
+  (step Rel Segment))
+(builtin rel Rel)
+(builtin here here)
+(builtin step step)
+
+; (⊑ p q): p lies inside q. It is inductive, so the difference is computed on the proof and the
+; laws are proved by induction, without comparing strings.
+(data ⊑ : (→ Abs Abs Type)
+  (⊑-refl : (⊑ p p))
+  (⊑-step : (→ (⊑ p q) (⊑ (/ p s) q))))
+
+(claim Abs.⊕ (→ Abs Rel Abs))
+(define (Abs.⊕ p n)
+  (match n
+    (here       p)
+    ((step v s) (/ (⊕ p v) s))))
+
+(claim Abs.⊖ (Π ((p Abs) (q Abs)) (→ (⊑ p q) Rel)))
+(define (Abs.⊖ p q n)
+  (match* (p n)
+    ((p ⊑-refl)     here)
+    (((/ p s) (⊑-step h)) (step (⊖ p q h) s))))
+
+(claim /s (→ Segment Abs Abs))
+(define (/s s p) (/ p s))
+
+; A point as text, to compose addresses: /site/css → "/site/css"; the root is "".
+(claim render-abs (→ Abs String))
+(define (render-abs n)
+  (match n
+    (root    "")
+    ((/ p s) (string-append (render-abs p) "/" (Segment.name s)))))
+
+; The law: q ⊕ (p ⊖ q) = p. Proved here once; whoever writes a design inherits it.
+(claim ⊕-⊖ (Π ((p Abs) (q Abs) (h (⊑ p q))) (≡ (⊕ q (⊖ p q h)) p)))
+(define (⊕-⊖ p q h)
+  (match* (p h)
+    ((p ⊑-refl)     refl)
+    (((/ p s) (⊑-step h)) (cong (/s s) (⊕-⊖ p q h)))))
+
+(claim path-affine (Affine Abs Rel ⊑))
+(define path-affine (affine Abs.⊕ Abs.⊖ ⊕-⊖))
+
+; Regions: a point's subtree. (⋔ p q): the subtrees of p and q are disjoint, because the two
+; paths part at a step. Inductive like ⊑; auto finds the point where they part.
+
+(claim ≠ (→ Segment Segment Type))
+(define (≠ s t) (So (distinct? (Segment.name s) (Segment.name t))))
+
+(data ⋔ : (→ Abs Abs Type)
+  (⋔-here  : (→ (≠ s t) (⋔ (/ p s) (/ p t))))
+  (⋔-left  : (→ (⋔ p q) (⋔ (/ p s) q)))
+  (⋔-right : (→ (⋔ p q) (⋔ p (/ q s)))))

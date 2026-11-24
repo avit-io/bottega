@@ -1,3 +1,4 @@
+#lang bottega
 ; The prelude: the logic, that is Martin-Löf type theory and its data, with the builtins the core
 ; uses for literals and for auto. It is always loaded; the rest is imported: (import dagger).
 

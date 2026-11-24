@@ -1,6 +1,7 @@
+#lang bottega
 ; Soluzioni del capitolo 8 — Oppure, e il nulla
 ;
-;   disegno check book/solutions/08-or-and-nothing.disegno
+;   raco make book/solutions/08-or-and-nothing.rkt
 
 ; 1. Un caso per introduzione, e l'introduzione opposta.
 

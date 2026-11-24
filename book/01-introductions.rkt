@@ -1,3 +1,4 @@
+#lang bottega
 ; Capitolo 1 — Il significato è nelle introduzioni
 ;
 ; Che cos'è un numero naturale? Si potrebbe rispondere con una proprietà, o con un insieme.
@@ -10,7 +11,7 @@
 ; di un'espressione sta nel modo in cui si giustifica ciò che la introduce. In Disegno l'idea non è
 ; una metafora: un tipo si dichiara elencando le sue introduzioni.
 ;
-;   disegno check book/01-introductions.disegno
+;   raco make book/01-introductions.rkt
 
 ; --- un tipo nuovo ---
 ; `data` dichiara un tipo e le sue introduzioni, i costruttori. Le stagioni sono quattro e non ce
