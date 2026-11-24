@@ -1,0 +1,73 @@
+; Capitolo 3 — Funzioni
+;
+; Anche le funzioni sono un tipo con un'introduzione e un'eliminazione. (→ A B) si introduce con
+; λ: «dammi un A, e ti costruisco un B». Si elimina applicandola a un A. Applicare una λ appena
+; costruita è la solita deviazione, e il calcolo la elimina: ((λ (x) corpo) a) si riduce al corpo
+; con a al posto di x. Si chiama β-riduzione.
+;
+;   disegno check book/03-functions.disegno
+
+; --- introduzione: λ ---
+; Una λ si controlla contro il tipo che si aspetta: qui (→ Nat Nat), quindi x è un Nat.
+
+(claim successore (→ Nat Nat))
+(define successore (λ (n) (add1 n)))
+
+; Le define dei capitoli precedenti erano già λ con un nome: queste due definizioni sono la
+; stessa funzione.
+
+(claim successore-bis (→ Nat Nat))
+(define (successore-bis n) (add1 n))
+
+; --- eliminazione: l'applicazione ---
+
+(claim quattro (≡ (successore 3) 4))
+(define quattro auto)
+
+; Una λ senza un tipo atteso non si può controllare: che cos'è x in (λ (x) (add1 x))? `the`
+; dichiara il tipo sul posto. Qui la deviazione è esplicita: una λ costruita e subito applicata.
+
+(claim deviazione (≡ ((the (→ Nat Nat) (λ (n) (add1 n))) 1) 2))
+(define deviazione auto)
+
+; --- funzioni che prendono funzioni ---
+
+(claim due-volte (→ (→ Nat Nat) Nat Nat))
+(define (due-volte f n) (f (f n)))
+
+(claim più-due (≡ (due-volte successore 0) 2))
+(define più-due auto)
+
+; --- argomenti impliciti: il polimorfismo ---
+; L'identità funziona per ogni tipo. Il tipo è un argomento come gli altri, ma il checker sa
+; dedurlo dall'uso: lo si dichiara con ∀, (∀ ((A Type)) …), e non lo si passa.
+
+(claim identità (∀ ((A Type)) (→ A A)))
+(define identità (λ (x) x))
+
+(claim composizione (∀ ((A Type) (B Type) (C Type)) (→ (→ B C) (→ A B) A C)))
+(define (composizione g f x) (g (f x)))
+
+(claim comporre (≡ (composizione successore successore 1) 3))
+(define comporre auto)
+
+; Un nome scritto nella firma e mai dichiarato diventa implicito da solo: (→ A A) vuol dire
+; (∀ ((A Type)) (→ A A)). Qui A e B sono impliciti senza averli scritti con ∀.
+
+(claim costante (→ A B A))
+(define (costante a _) a)
+
+; --- esercizi ---
+;
+; 1. Applica una funzione n volte.
+; (claim iterata (∀ ((A Type)) (→ Nat (→ A A) A A)))
+; (define (iterata n f a)
+;   (match n
+;     (zero ___)
+;     ((add1 k) ___)))
+; (claim otto (≡ (iterata 3 (λ (n) (+ n n)) 1) 8))
+; (define otto auto)
+;
+; 2. Scambia l'ordine degli argomenti di una funzione.
+; (claim scambia (∀ ((A Type) (B Type) (C Type)) (→ (→ A B C) B A C)))
+; (define scambia ___)

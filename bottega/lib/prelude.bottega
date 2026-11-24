@@ -1,0 +1,250 @@
+; The prelude: the logic, that is Martin-Löf type theory and its data, with the builtins the core
+; uses for literals and for auto. It is always loaded; the rest is imported: (import dagger).
+
+; --- equality ---
+
+(data ≡ : (→ A A Type)
+  (refl : (≡ x x)))
+(builtin eq ≡)
+(builtin refl refl)
+
+(claim cong (Π ((f (→ A B))) (→ (≡ x y) (≡ (f x) (f y)))))
+(define (cong f n)
+  (match n
+    (refl refl)))
+
+(claim sym (→ (≡ x y) (≡ y x)))
+(define (sym n)
+  (match n
+    (refl refl)))
+
+(claim trans (→ (≡ x y) (≡ y z) (≡ x z)))
+(define (trans n m)
+  (match* (n m)
+    ((refl refl) refl)))
+
+; transport (Pie's replace): the elimination of equality. What holds of x holds of y, if x ≡ y.
+(claim transport (∀ ((A Type) (x A) (y A)) (→ (≡ x y) (Π ((P (→ A Type))) (→ (P x) (P y))))))
+(define (transport n P px)
+  (match n
+    (refl px)))
+
+; Either: disjunction. Two introductions; eliminating it means handling both cases.
+(data Either : (→ Type Type Type)
+  (left  : (→ A (Either A B)))
+  (right : (→ B (Either A B))))
+
+; --- decidable propositions: (So b) is ⊤ if b is true, ⊥ otherwise; auto proves ⊤ by computing ---
+
+(data ⊥ : Type)
+(builtin empty ⊥)
+
+(data ⊤
+  (tt))
+(builtin unit ⊤)
+(builtin tt tt)
+
+(data Bool
+  (true)
+  (false))
+(builtin bool Bool)
+(builtin true true)
+(builtin false false)
+
+(claim ¬ (→ Type Type))              ; negation: (¬ A) is A → ⊥
+(define (¬ A) (→ A ⊥))
+
+(claim So (→ Bool Type))
+(define (So n)
+  (match n
+    (true  ⊤)
+    (false ⊥)))
+
+(claim if (→ Bool A A A))
+(define (if n a b)
+  (match n
+    (true a)
+    (false b)))
+
+; --- naturals: 0, 1, 2… are sugar for zero, add1 ---
+
+(data Nat
+  (zero)
+  (add1 Nat))
+(builtin nat Nat)
+(builtin zero zero)
+(builtin suc add1)
+
+(claim + (→ Nat Nat Nat))
+(define (+ n m)
+  (match n
+    (zero m)
+    ((add1 k) (add1 (+ k m)))))
+
+(claim ≤? (→ Nat Nat Bool))
+(define (≤? x y)
+  (match* (x y)
+    ((zero _)        true)
+    (((add1 _) zero)     false)
+    (((add1 m) (add1 n)) (≤? m n))))
+
+(claim ≥ (→ Nat Nat Type))
+(define (≥ m n) (So (≤? n m)))
+
+; The definitions are unary and are the logical truth; the evaluator computes natively on numbers
+; those bound as builtins below (types.ss, fast), and test.ss checks that they agree.
+
+(claim ∸ (→ Nat Nat Nat))                 ; truncated subtraction
+(define (∸ n m)
+  (match* (n m)
+    ((p zero)     p)
+    ((zero (add1 _)) zero)
+    (((add1 p) (add1 q)) (∸ p q))))
+
+(claim * (→ Nat Nat Nat))
+(define (* n m)
+  (match n
+    (zero zero)
+    ((add1 k) (+ m (* k m)))))
+
+(claim <? (→ Nat Nat Bool))
+(define (<? m n) (≤? (add1 m) n))
+
+(claim nat=? (→ Nat Nat Bool))
+(define (nat=? x y)
+  (match* (x y)
+    ((zero zero)     true)
+    ((zero (add1 _)) false)
+    (((add1 _) zero)     false)
+    (((add1 m) (add1 n)) (nat=? m n))))
+
+(claim pow2 (→ Nat Nat))
+(define (pow2 n)
+  (match n
+    (zero     1)
+    ((add1 k) (+ (pow2 k) (pow2 k)))))
+
+(builtin plus +)
+(builtin monus ∸)
+(builtin times *)
+(builtin leq? ≤?)
+(builtin lt? <?)
+(builtin nat-eq? nat=?)
+(builtin pow2 pow2)
+
+(claim not (→ Bool Bool))
+(define (not n)
+  (match n
+    (true  false)
+    (false true)))
+
+(claim and (→ Bool Bool Bool))
+(define (and n b)
+  (match n
+    (true b)
+    (false false)))
+
+(claim or (→ Bool Bool Bool))
+(define (or n b)
+  (match n
+    (true true)
+    (false b)))
+
+; Order as an inductive relation: the difference is computed on the proof, as for paths.
+(data ≤ : (→ Nat Nat Type)
+  (≤-zero : (≤ zero n))
+  (≤-succ : (→ (≤ m n) (≤ (add1 m) (add1 n)))))
+
+; Reflection: from the boolean test to the inductive relation.
+(claim ≤-from (Π ((m Nat) (n Nat)) (→ (So (≤? m n)) (≤ m n))))
+(define (≤-from m n h)
+  (match* (m n)
+    ((zero n) ≤-zero)
+    (((add1 m) (add1 n)) (≤-succ (≤-from m n h)))))
+
+; The law of naturals: q + (p ∸ q) = p if q ≤ p. Used by time and addresses.
+(claim +-∸ (Π ((p Nat) (q Nat) (h (≤ q p))) (≡ (+ q (∸ p q)) p)))
+(define (+-∸ p q h)
+  (match* (p q h)
+    ((p zero ≤-zero)     refl)
+    (((add1 p) (add1 q) (≤-succ h)) (cong add1 (+-∸ p q h)))))
+
+; --- lists: (list "a" "b") is sugar for (:: "a" (:: "b" nil)) ---
+
+(data List : (→ Type Type)
+  (nil : (List A))
+  (::  : (→ A (List A) (List A))))
+(builtin list List)
+(builtin nil nil)
+(builtin cons ::)
+
+(claim ++ (→ (List A) (List A) (List A)))
+(define (++ n ys)
+  (match n
+    (nil ys)
+    ((:: x xs) (:: x (++ xs ys)))))
+
+(claim concat-map (→ (→ A (List B)) (List A) (List B)))
+(define (concat-map f n)
+  (match n
+    (nil       (list))
+    ((:: x xs) (++ (f x) (concat-map f xs)))))
+
+(claim any? (→ (→ A Bool) (List A) Bool))
+(define (any? p n)
+  (match n
+    (nil       false)
+    ((:: x xs) (if (p x) true (any? p xs)))))
+
+(claim all (→ (→ A Bool) (List A) Bool))
+(define (all p n)
+  (match n
+    (nil       true)
+    ((:: x xs) (if (p x) (all p xs) false))))
+
+(claim map (→ (→ A B) (List A) (List B)))
+(define (map f n)
+  (match n
+    (nil       (list))
+    ((:: x xs) (:: (f x) (map f xs)))))
+
+; (Holds p x): p holds on x. It is data and not (So (p x)), so if auto fails it says on which x.
+(data Holds : (→ (→ A Bool) A Type)
+  (holds : (Π ((p (→ A Bool)) (x A)) (→ (So (p x)) (Holds p x)))))
+
+
+; Propositions on lists: Every p xs (every element satisfies p), Pairwise r xs (every pair is in r).
+
+; Σ: the dependent pair. The second element has a type depending on the first; it is "there is an a
+; such that B a". × is the case where B does not depend on a.
+(data Σ : (Π ((A Type)) (→ (→ A Type) Type))
+  (pair : (∀ ((A Type) (B (→ A Type))) (Π ((a A)) (→ (B a) (Σ A B))))))
+(builtin sigma Σ)
+
+(claim fst (∀ ((A Type) (B (→ A Type))) (→ (Σ A B) A)))
+(define (fst n)
+  (match n
+    ((pair a _) a)))
+
+(claim snd (∀ ((A Type) (B (→ A Type))) (Π ((p (Σ A B))) (B (fst p)))))
+(define (snd p)
+  (match p
+    ((pair _ b) b)))
+
+(claim × (→ Type Type Type))
+(define (× A B) (Σ A (λ (_) B)))
+
+(claim Every (→ (→ A Type) (List A) Type))
+(define (Every p n)
+  (match n
+    (nil       ⊤)
+    ((:: x xs) (× (p x) (Every p xs)))))
+
+(claim Pairwise (→ (→ A A Type) (List A) Type))
+(define (Pairwise r n)
+  (match n
+    (nil       ⊤)
+    ((:: x xs) (× (Every (r x) xs) (Pairwise r xs)))))
+
+(claim All (→ (→ A Bool) (List A) Type))
+(define (All p xs) (Every (Holds p) xs))

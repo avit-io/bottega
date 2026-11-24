@@ -1,0 +1,170 @@
+; Capitolo 6 — L'uguaglianza
+;
+; Nei capitoli precedenti ≡ compariva nei teoremi, e auto li dimostrava calcolando. Qui ≡ diventa
+; un tipo come gli altri: con un'introduzione, un'eliminazione, e le prove che non si ottengono
+; calcolando ma costruendo. Alla fine del capitolo l'accoda del capitolo 5 con il tipo
+; (Vec A (+ m n)), che il checker rifiutava, passa.
+;
+;   disegno check book/06-equality.disegno
+
+; --- l'introduzione: refl ---
+; La libreria standard dichiara ≡ così:
+;
+;   (data ≡ : (→ A A Type)
+;     (refl : (≡ x x)))
+;
+; (≡ x y) è un tipo per ogni coppia x, y: una famiglia, come Vec. La sua unica introduzione è
+; refl, e sta solo in (≡ x x). Si legga alla Dummett: x ≡ y significa che x e y sono la stessa
+; cosa, e il solo modo canonico di saperlo è mostrare che lo sono.
+;
+; Ma «la stessa cosa» va inteso a meno di calcolo. Il checker accetta refl per (≡ (+ 2 3) 5)
+; perché, calcolando, i due lati arrivano alla stessa forma canonica:
+
+(claim per-calcolo (≡ (+ 2 3) 5))
+(define per-calcolo refl)
+
+; Per (≡ 1 2) rifiuta: «refl: expected (≡ 1 2), found (≡ 1 1)». E rifiuta anche (≡ (+ n 0) n)
+; con n ignoto: «refl: expected (≡ (+ n 0) n), found (≡ (+ n 0) (+ n 0))». + elimina il primo
+; argomento, n non ha forma canonica, il calcolo si ferma. È vero, ma serve una prova.
+;
+; Ci sono quindi due uguaglianze. Una il checker la vede da sé calcolando: si chiama uguaglianza
+; per definizione, o giudizio. L'altra è un tipo, ≡, e si dimostra. refl è il ponte: la prima
+; diventa la seconda.
+
+; --- l'eliminazione: il pattern refl ---
+; Eliminare una prova di (≡ x y) vuol dire rispondere alla sua unica introduzione. Il pattern
+; refl dice al checker: in questa clausola x e y sono lo stesso. Il principio di inversione di
+; nuovo: da x ≡ y si ottiene ciò che si otteneva da refl, e refl non contiene altro che
+; l'informazione che i due lati coincidono.
+
+(claim simmetria (→ (≡ x y) (≡ y x)))
+(define (simmetria n)
+  (match n
+    (refl refl)))
+
+; Nella clausola, dopo il pattern, x e y sono la stessa variabile: il risultato atteso diventa
+; (≡ x x), e refl lo introduce. Allo stesso modo la libreria standard definisce sym, trans e
+; cong:
+;
+;   (claim trans (→ (≡ x y) (≡ y z) (≡ x z)))
+;   (define (trans n m)
+;     (match* (n m)
+;       ((refl refl) refl)))
+;
+;   (claim cong (Π ((f (→ A B))) (→ (≡ x y) (≡ (f x) (f y)))))
+;   (define (cong f n)
+;     (match n
+;       (refl refl)))
+
+; --- transport: ciò che vale di x vale di y ---
+; La forma generale dell'eliminazione è transport, il replace di Pie. Dato x ≡ y e una famiglia
+; P, sposta un elemento di (P x) in (P y). Nella libreria standard:
+;
+;   (claim transport (∀ ((A Type) (x A) (y A)) (→ (≡ x y) (Π ((P (→ A Type))) (→ (P x) (P y))))))
+;   (define (transport n P px)
+;     (match n
+;       (refl px)))
+;
+; P è il motivo, come per ind-Nat. Si legga come una regola: se x ≡ y, ogni proprietà di x è una
+; proprietà di y. È Leibniz, ed è l'unica cosa che una prova di uguaglianza sa fare.
+
+; --- prove per induzione ---
+; Una prova di uguaglianza su un n ignoto si costruisce eliminando n: nel caso zero il calcolo
+; basta, nel caso (add1 k) si porta l'ipotesi induttiva dentro add1 con cong.
+
+(claim +-zero (Π ((n Nat)) (≡ (+ n 0) n)))
+(define (+-zero n)
+  (match n
+    (zero     refl)
+    ((add1 k) (cong add1 (+-zero k)))))
+
+(claim +-add1 (Π ((n Nat) (m Nat)) (≡ (+ n (add1 m)) (add1 (+ n m)))))
+(define (+-add1 n m)
+  (match n
+    (zero refl)
+    ((add1 k) (cong add1 (+-add1 k m)))))
+
+; Con questi due lemmi la commutatività si dimostra componendo uguaglianze, come una catena di
+; passaggi alla lavagna.
+;
+;   caso zero:     (+ 0 m) si riduce a m, e m ≡ (+ m 0) è +-zero rovesciato;
+;   caso (add1 k): (+ (add1 k) m) si riduce a (add1 (+ k m))
+;                  ≡ (add1 (+ m k))   per ipotesi induttiva, dentro add1
+;                  ≡ (+ m (add1 k))   per +-add1, rovesciato.
+
+(claim +-comm (Π ((n Nat) (m Nat)) (≡ (+ n m) (+ m n))))
+(define (+-comm n m)
+  (match n
+    (zero (sym (+-zero m)))
+    ((add1 k) (trans (cong add1 (+-comm k m))
+                     (sym (+-add1 m k))))))
+
+; Quando il calcolo arriva fino in fondo, la prova è breve. L'associatività elimina a, e + elimina
+; proprio il primo argomento: entrambi i lati si riducono nello stesso modo.
+
+(claim +-assoc (Π ((a Nat) (b Nat) (c Nat)) (≡ (+ (+ a b) c) (+ a (+ b c)))))
+(define (+-assoc a b c)
+  (match a
+    (zero refl)
+    ((add1 k) (cong add1 (+-assoc k b c)))))
+
+; --- usare un teorema dentro un tipo ---
+; Torniamo al capitolo 5. accoda produce un (Vec A (+ n m)); vogliamo un (Vec A (+ m n)). Le due
+; lunghezze non sono uguali per calcolo, ma +-comm prova che sono uguali. transport, con il
+; motivo «vettori di lunghezza k», sposta il vettore dall'una all'altra.
+
+(data Vec : (→ Type Nat Type)
+  (vnil  : (Vec A zero))
+  (vcons : (→ A (Vec A n) (Vec A (add1 n)))))
+
+(claim accoda (→ (Vec A n) (Vec A m) (Vec A (+ n m))))
+(define (accoda y ys)
+  (match y
+    (vnil ys)
+    ((vcons x resto) (vcons x (accoda resto ys)))))
+
+(claim accoda-al-contrario (∀ ((A Type) (n Nat) (m Nat)) (→ (Vec A n) (Vec A m) (Vec A (+ m n)))))
+(define (accoda-al-contrario xs ys) (transport (+-comm n m) (λ (k) (Vec A k)) (accoda xs ys)))
+
+; Il vettore è lo stesso: transport cambia il tipo, non gli elementi. Su numeri noti +-comm si
+; riduce a refl, e transport di refl è l'identità: un'altra deviazione che il calcolo elimina.
+
+(claim stesso-vettore (≡ (accoda-al-contrario (vcons 1 vnil) (vcons 2 vnil))
+                         (vcons 1 (vcons 2 vnil))))
+(define stesso-vettore auto)
+
+; --- una scelta: tutte le prove di x ≡ x sono refl ---
+; In Disegno il pattern refl si può usare anche quando i due lati sono già la stessa variabile.
+; Ne segue che ogni prova di (≡ x x) è refl stessa: si chiama assioma K.
+
+(claim unicità (∀ ((A Type) (x A)) (Π ((p (≡ x x))) (≡ p refl))))
+(define (unicità p)
+  (match p
+    (refl refl)))
+
+; Non tutte le teorie dei tipi lo accettano. La teoria omotopica dei tipi lo rifiuta, perché lì
+; due prove di uguaglianza possono essere davvero diverse, come due cammini tra gli stessi punti.
+; Disegno sceglie K per semplicità: qui un'uguaglianza è un fatto, non un cammino.
+
+; --- esercizi ---
+;
+; 1. La transitività, senza usare trans.
+; (claim transitività (→ (≡ x y) (≡ y z) (≡ x z)))
+; (define transitività ___)
+;
+; 2. cong con una funzione di due argomenti.
+; (claim cong2 (Π ((f (→ A B C))) (→ (≡ a a2) (≡ b b2) (≡ (f a b) (f a2 b2)))))
+; (define cong2 ___)
+;
+; 3. Il doppio di n è n + n. Suggerimento: nel caso (add1 k) servono +-add1 e trans.
+; (claim doppio (→ Nat Nat))
+; (define (doppio n)
+;   (match n
+;     (zero     zero)
+;     ((add1 k) (add1 (add1 (doppio k))))))
+; (claim doppio-è-somma (Π ((n Nat)) (≡ (doppio n) (+ n n))))
+; (define doppio-è-somma ___)
+;
+; 4. sym con transport invece del pattern refl. Il motivo è (λ (z) (≡ z x)).
+; (claim sym-bis (∀ ((A Type) (x A) (y A)) (→ (≡ x y) (≡ y x))))
+; (define (sym-bis e) ___)

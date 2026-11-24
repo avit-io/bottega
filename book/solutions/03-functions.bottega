@@ -1,0 +1,19 @@
+; Soluzioni del capitolo 3 — Funzioni
+;
+;   disegno check book/solutions/03-functions.disegno
+
+; 1. Zero volte è a stesso; (add1 k) volte è f applicata dopo k volte.
+
+(claim iterata (∀ ((A Type)) (→ Nat (→ A A) A A)))
+(define (iterata n f a)
+  (match n
+    (zero a)
+    ((add1 k) (f (iterata k f a)))))
+
+(claim otto (≡ (iterata 3 (λ (n) (+ n n)) 1) 8))
+(define otto auto)
+
+; 2. Il tipo dice quasi tutto: con f, b e a in mano, l'unica cosa che si può fare è (f a b).
+
+(claim scambia (∀ ((A Type) (B Type) (C Type)) (→ (→ A B C) B A C)))
+(define (scambia f b a) (f a b))
