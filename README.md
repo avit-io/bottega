@@ -11,7 +11,7 @@ il type checker ne prova le proprietà, e un realizzatore che esiste già lo ese
 | `bottega` | la logica: Π, Σ, ≡, `data`, `record`, match dipendente, `auto` | — | fatto |
 | `disegno` | la pipeline: il progetto, non l'esecuzione | Dagger (1.0 beta.28) | piano e run, AWS, git, ArgoCD; parità con Chez anche su be-tsid |
 | `prospettiva` | un modello, molti ambienti come proiezioni; i teoremi sono le invarianti | Nix (flake, derivazioni) | values.yaml per ambiente |
-| `affresco` | l'architettura di Elm, totale, lato server; le prove sono i test | un runtime Racket (HTTP) | vista, diff ed eventi; un contatore d'esempio |
+| `affresco` | l'architettura di Elm, totale, lato server; le prove sono i test | un runtime Racket (HTTP) | vista, diff, eventi e timer; un contatore e un cronometro |
 
 Il nome viene dalla bottega rinascimentale: il luogo dove il disegno diventa opera. L'apprendista
 cominciava da due lezioni, una sfera con la luce, l'ombra e l'ombra portata, e un pavimento a
@@ -62,6 +62,7 @@ racket cookbook/prospettiva/service.rkt show qa                       # una proi
 nix build .#example                                                   # tutte, come derivazione
 
 racket cookbook/affresco/counter.rkt serve 8080                       # un programma, su localhost:8080
+racket cookbook/affresco/timer.rkt serve 8080                         # un programma iscritto al tempo
 nix run .#counter -- 8080                                             # lo stesso, costruito da Nix
 nix flake check                                                       # i teoremi e i test
 ```
@@ -74,7 +75,7 @@ bottega/core/   il nucleo: superficie, elaborazione, kernel, definizioni
 bottega/lib/    la libreria standard: prelude, text, affine, paths, time, net, aws
 disegno/        il dialetto: piano, runner, sessione, generatore; disegno/lib le librerie: dagger, files, delivery, git, argocd, aws
 prospettiva/    il dialetto dei modelli: proiezioni e YAML
-affresco/       il dialetto dei programmi: runtime, diff, server; affresco/lib Html e Program
+affresco/       il dialetto dei programmi: runtime, diff, server; affresco/lib Html, Sub e Program
 book/           il libro          cookbook/  le ricette; prospettiva/ e affresco/ gli esempi e i template
 tests/          i test e i golden  tools/     il logo
 ```
@@ -119,6 +120,12 @@ dice quale:
 ```
 counter.rkt:74:26: three-buttons: refl: expected (≡ (:: inc (:: reset (:: inc nil))) (:: dec …
 ```
+
+Un programma dice anche a che cosa è iscritto, in ogni stato: `subs`, che oggi conosce solo il
+tempo (`every`). Il cronometro (`cookbook/affresco/timer.rkt`) è iscritto a un tick al secondo solo
+mentre corre, e lo prova: «fermo, il tempo non lo raggiunge». Il runtime accende e spegne i timer
+quando le iscrizioni cambiano; clic e tick arrivano al browser su un solo stream, nell'ordine del
+server. `Cmd` non c'è: `update` resta puro.
 
 ```
 nix flake init -t github:avit-io/bottega#affresco

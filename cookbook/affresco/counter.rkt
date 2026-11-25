@@ -46,7 +46,7 @@
                         (button (list (on-click inc)) (list (text "+"))))))))
 
 (claim main (Program Model Msg))
-(define main (program init update view))
+(define main (program init update view silent))
 
 ; --- le prove: che cosa il programma deve fare ---
 

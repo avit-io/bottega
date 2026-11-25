@@ -6,12 +6,14 @@
          bottega/check affresco/run (only-in affresco/dialect languages implicit))
 
 (define-runtime-path root "..")
-(define counter (build-path root "cookbook" "affresco" "counter.rkt"))
+(define (example f) (build-path root "cookbook" "affresco" f))
+(define counter (example "counter.rkt"))
+(define timer (example "timer.rkt"))
 
 ;; --- the proofs are the tests: each change breaks one ---
 
-(define (rejects-change from to expected)
-  (define src (string-replace (file->string counter) from to #:all? #f))
+(define (rejects-change from to expected #:in [file counter])
+  (define src (string-replace (file->string file) from to #:all? #f))
   (check-true (string-contains? src to))
   (define msg (with-handlers ([exn:fail? exn-message])
                 (parameterize ([current-languages languages] [current-implicit implicit])
@@ -49,6 +51,27 @@
                     '((text (0 0 0) "ciao") (set (0 1) "value" "ciao")))
       (check-equal? (step! s '(0 2 1) "click" "") '((text (0 2 2 0) "0")))          ; reset
       (check-equal? (step! s '(9 9) "click" "") '()))))                             ; nothing there
+
+;; --- subscriptions: the timer's proofs, and its ticks ---
+
+;; it ticks even when stopped
+(rejects-change "(list (every 1000 tick)) (list)" "(list (every 1000 tick)) (list (every 1000 tick))"
+                "stopped-is-silent: refl: expected" #:in timer)
+;; it ticks twice as often
+(rejects-change "(list (every 1000 tick)) (list)" "(list (every 500 tick)) (list)" "running-ticks: refl: expected" #:in timer)
+
+(parameterize ([current-languages languages] [current-implicit implicit])
+  (call-with-checked-file timer
+    (λ ()
+      (define s (new-session))
+      (check-equal? (session-every s) '())                                          ; stopped: no timer
+      (check-equal? (step! s '(0 1 0) "click" "") '((text (0 1 0 0) "ferma")))     ; parti
+      (check-equal? (session-every s) '(1000))
+      (check-equal? (fire! s 0) '((text (0 1 1 0) "1")))                           ; a second goes by
+      (check-equal? (fire! s 0) '((text (0 1 1 0) "2")))
+      (check-equal? (step! s '(0 1 0) "click" "") '((text (0 1 0 0) "parti")))     ; ferma
+      (check-equal? (session-every s) '())
+      (check-equal? (fire! s 0) '()))))                                             ; a late tick: nothing
 
 ;; --- diff, then patch, gives the new page ---
 

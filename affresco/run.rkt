@@ -9,13 +9,16 @@
 ;; path of their element (child indices from the root, text nodes included). An event evaluates
 ;; its message, update gives the new model, view the new page; diff says what changed.
 ;; ponytail: one lock for all the sessions, and they live in memory until the process ends.
-;; ponytail: no Cmd and no Sub: nothing reaches update but the browser's events.
+;; Subscriptions are timers, one thread each, started when the page opens its stream and restarted
+;; when subs gives another list. Every patch, a click's or a tick's, goes down that one stream, in
+;; the order the server made it.
+;; ponytail: no Cmd: update stays pure, nothing runs because of a message. Add it with a first effect.
 
-(require racket/match racket/list racket/string json xml net/url
+(require racket/match racket/list racket/string racket/async-channel json xml net/url
          web-server/servlet-env web-server/http
          bottega/check bottega/core/state bottega/core/term bottega/core/eval
          "dialect.rkt")
-(provide main-program new-session step! session-page diff patch)
+(provide main-program new-session step! fire! session-page session-every diff patch)
 
 (define (main-program file)
   (define args (vector->list (current-command-line-arguments)))
@@ -29,7 +32,7 @@
             [(list "serve" port) (serve (string->number port))]
             [_ (eprintf "usage: racket app.rkt show | serve PORT | check\n") (exit 2)]))))))
 
-;; --- the program: main's three fields, as values ---
+;; --- the program: main's four fields, as values ---
 
 (define (program-field i)
   (match (force (evaluate '() (tglob (or (resolve 'main) (oops "main is missing: (claim main (Program Model Msg))")))))
@@ -39,6 +42,10 @@
 (define (init) (program-field 0))
 (define (update msg model) (apply-spine (program-field 1) (list (cons msg 'e) (cons model 'e))))
 (define (view model) (reify 0 (apply-value (program-field 2) model 'e)))
+(define (subs model)                              ; → ((milliseconds . message) …)
+  (for/list ([s (term->list (reify 0 (apply-value (program-field 3) model 'e)))])
+    (match-define (list (tnum ms) msg) (args-of s))
+    (cons ms msg)))
 
 ;; --- a view: x-expressions, and the events by (path . event) ---
 
@@ -123,19 +130,22 @@
 
 ;; --- the server ---
 
-(struct session (model page events) #:mutable)
+;; subs: ((milliseconds . message) …); out: the page's stream, once open; gen: which timers are
+;; current, so an old one stops by itself, even the one whose tick changed the subscriptions
+(struct session (model page events subs out gen) #:mutable)
 (define sessions (make-hash))
-(define lock (make-semaphore 1))
+(define lock (make-semaphore 1))                  ; one model change at a time, whoever asks
+(define (locked f) (call-with-semaphore lock f))
 
 (define (serve port)
   (printf "affresco: http://localhost:~a\n" port)
-  (serve/servlet (λ (req) (call-with-semaphore lock (λ () (respond req))))
-                 #:port port #:servlet-regexp #rx"" #:command-line? #t #:listen-ip #f))
+  (serve/servlet respond #:port port #:servlet-regexp #rx"" #:command-line? #t #:listen-ip #f))
 
 (define (respond req)
   (match (url->string* req)
-    ["/event" (event (bytes->jsexpr (request-post-data/raw req)))]
-    [_ (page)]))
+    ["/event" (locked (λ () (event (bytes->jsexpr (request-post-data/raw req)))))]
+    [(regexp #rx"^/events/(.*)$" (list _ id)) (stream id)]
+    [_ (locked page)]))
 
 (define (url->string* req) (string-append "/" (string-join (map path/param-path (url-path (request-uri req))) "/")))
 
@@ -146,30 +156,66 @@
   (response/full 200 #"OK" (current-seconds) TEXT/HTML-MIME-TYPE '()
                  (list (string->bytes/utf-8 (shell id (xexprs->string (session-page s)))))))
 
-;; {"session", "path", "event", "value"} → the patches, as JSON
+;; {"session", "path", "event", "value"}: the patches go down the stream
 (define (event e)
   (define s (hash-ref sessions (hash-ref e 'session) #f))
-  (define patches (if s (step! s (hash-ref e 'path) (hash-ref e 'event) (hash-ref e 'value "")) '()))
-  (response/jsexpr (for/list ([p patches]) (cons (symbol->string (car p)) (cdr p)))))
+  (when s (step! s (hash-ref e 'path) (hash-ref e 'event) (hash-ref e 'value "")))
+  (response/jsexpr '()))
 
-;; A session starts at init; an event finds its message, update the model, view the page.
+;; The page's stream: server-sent events, one per batch of patches. Its timers start here.
+;; ponytail: a closed tab is noticed at the next write; a session without timers stays in memory.
+(define (stream id)
+  (define s (hash-ref sessions id #f))
+  (define out (make-async-channel))
+  (if (not s)
+      (response/full 204 #"No Content" (current-seconds) #f '() '())   ; gone: the browser stops asking
+      (begin (locked (λ () (set-session-out! s out) (restart-timers! s)))
+             (response 200 #"OK" (current-seconds) #"text/event-stream" (list (header #"Cache-Control" #"no-cache"))
+                       (λ (port)
+                         (with-handlers ([exn:fail? (λ (_) (locked (λ () (set-session-out! s #f) (hash-remove! sessions id))))])
+                           (let loop ()
+                             (define ps (for/list ([p (async-channel-get out)]) (cons (symbol->string (car p)) (cdr p))))
+                             (write-string (format "data: ~a\n\n" (jsexpr->string ps)) port)
+                             (flush-output port)
+                             (loop))))))))
+
+;; A session starts at init; a message updates the model, the view gives the page, diff the patches.
 (define (new-session)
   (define model (init))
   (define-values (xs events) (render (view model)))
-  (session model xs events))
+  (session model xs events (subs model) #f 0))
 
-(define (step! s path on value)                   ; → the patches
+(define (deliver! s msg)                          ; → the patches, sent down the stream if open
+  (define model (update msg (session-model s)))
+  (define-values (xs events) (render (view model)))
+  (define ps (diff (session-page s) xs))
+  (set-session-model! s model) (set-session-page! s xs) (set-session-events! s events)
+  (define new (subs model))
+  (unless (equal? new (session-subs s)) (set-session-subs! s new) (restart-timers! s))
+  (when (and (session-out s) (pair? ps)) (async-channel-put (session-out s) ps))
+  ps)
+
+(define (step! s path on value)                   ; an event of the page → the patches
   (define handler (findf (λ (x) (and (equal? (car x) path) (equal? (cadr x) on))) (session-events s)))
   (cond
     [(not handler) '()]                          ; the page changed meanwhile: nothing to do
-    [else
-     (define msg (if (equal? on "input")
-                     (apply-value (evaluate '() (cddr handler)) (vstr value) 'e)
-                     (evaluate '() (cddr handler))))
-     (define model (update msg (session-model s)))
-     (define-values (xs events) (render (view model)))
-     (begin0 (diff (session-page s) xs)
-             (set-session-model! s model) (set-session-page! s xs) (set-session-events! s events))]))
+    [(equal? on "input") (deliver! s (apply-value (evaluate '() (cddr handler)) (vstr value) 'e))]
+    [else (deliver! s (evaluate '() (cddr handler)))]))
+
+(define (fire! s i)                               ; the i-th subscription fires → the patches
+  (if (< i (length (session-subs s))) (deliver! s (evaluate '() (cdr (list-ref (session-subs s) i)))) '()))
+
+(define (session-every s) (map car (session-subs s)))
+
+(define (restart-timers! s)                       ; only for an open page: tests fire by hand
+  (define gen (add1 (session-gen s)))
+  (set-session-gen! s gen)
+  (when (session-out s)
+    (for ([sub (session-subs s)] [i (in-naturals)])
+      (thread (λ () (let loop ()
+                      (sleep (/ (car sub) 1000))
+                      (when (locked (λ () (and (= gen (session-gen s)) (session-out s) (fire! s i) #t)))
+                        (loop))))))))
 
 (define (shell id body)
   (string-append
@@ -178,18 +224,21 @@
    " button{font:inherit;padding:.2em .8em} .digits{min-width:2em;text-align:center}</style></head><body>"
    "<div id=\"affresco\" data-session=\"" id "\">" body "</div><script>" client "</script></body></html>"))
 
-;; The browser: events up, patches down. A node's path is its child indices from the root.
+;; The browser: events up by POST, patches down by one stream, in the server's order.
+;; A node's path is its child indices from the root.
 (define client #<<JS
 const root = document.getElementById("affresco");
 const pathOf = (n) => { const p = []; while (n !== root) { p.unshift([...n.parentNode.childNodes].indexOf(n)); n = n.parentNode; } return p; };
 const at = (p) => p.reduce((n, i) => n.childNodes[i], root);
 const html = (s) => { const t = document.createElement("template"); t.innerHTML = s; return t.content; };
-for (const type of ["click", "input"]) root.addEventListener(type, async (e) => {
+for (const type of ["click", "input"]) root.addEventListener(type, (e) => {
   const n = e.target.closest("[data-on]");
   if (!n || n.dataset.on !== type) return;
-  const r = await fetch("/event", { method: "POST", body: JSON.stringify(
+  fetch("/event", { method: "POST", body: JSON.stringify(
     { session: root.dataset.session, path: pathOf(n), event: type, value: n.value || "" }) });
-  for (const [op, p, a, b] of await r.json()) {
+});
+new EventSource("/events/" + root.dataset.session).onmessage = (m) => {
+  for (const [op, p, a, b] of JSON.parse(m.data)) {
     const n = at(p);
     if (op === "text") n.textContent = a;
     else if (op === "set") { n.setAttribute(a, b); if (a === "value" && n.value !== b) n.value = b; }
@@ -197,6 +246,6 @@ for (const type of ["click", "input"]) root.addEventListener(type, async (e) => 
     else if (op === "replace") n.replaceWith(html(a));
     else if (op === "children") n.replaceChildren(html(a));
   }
-});
+};
 JS
   )

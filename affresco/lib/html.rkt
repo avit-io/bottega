@@ -19,11 +19,18 @@
   (text-then : (→ String (Html M) (Html M)))                        ; un testo, poi i fratelli
   (node : (→ String (List (Attr M)) (Html M) (Html M) (Html M))))   ; tag, attributi, figli, fratelli
 
-; Il programma: lo stato iniziale, come un messaggio lo cambia, come si vede.
+; Un'iscrizione: un messaggio che arriva da sé, senza un evento della pagina.
+; ponytail: solo il tempo; altre fonti (un socket, un file) quando un programma le chiede.
+(data Sub : (→ Type Type)
+  (every : (→ Nat M (Sub M))))                    ; ogni tanti millisecondi, il messaggio
+
+; Il programma: lo stato iniziale, come un messaggio lo cambia, come si vede, e a che cosa è
+; iscritto in ogni stato.
 (record (Program Model Msg)
   (init Model)
   (update (→ Msg Model Model))
-  (view (→ Model (Html Msg))))
+  (view (→ Model (Html Msg)))
+  (subs (→ Model (List (Sub Msg)))))
 
 (builtin html-end end)
 (builtin html-text text-then)
@@ -31,6 +38,7 @@
 (builtin attr attr)
 (builtin on-click on-click)
 (builtin on-input on-input)
+(builtin every every)
 (builtin program program)
 
 ; --- scrivere una vista ---
@@ -69,6 +77,9 @@
 (define (class c) (attr "class" c))
 (claim value (→ String (Attr M)))
 (define (value v) (attr "value" v))
+
+(claim silent (→ A (List (Sub M))))                ; nessuna iscrizione, in ogni stato
+(define (silent _) (list))
 
 ; --- leggere una vista: per le prove ---
 
