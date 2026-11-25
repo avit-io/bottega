@@ -26,3 +26,8 @@
 (rejects-change "(qa   (cluster \"eks-legacy\" legacy))" "(qa   (cluster \"eks-blue\" chart))" "expected (≡ 8080 80)")
 ;; a region that does not exist is a type error while typing
 (rejects-change "\"eu-west-1\" (port-of" "\"eu-west-9\" (port-of" "is not a valid Region")
+
+;; dev has no hostname: (nothing) leaves the key out; its probe is the other case, with a path
+(let ([dev (render-text model "dev")])
+  (check-false (string-contains? dev "hostname"))
+  (check-true (string-contains? dev "probe:\n  path: \"/healthz\"\n  port: 8080\n")))

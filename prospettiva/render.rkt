@@ -8,14 +8,15 @@
 ;;   racket model.rkt check         types and theorems only
 ;;
 ;; A value becomes data in one way only, from its normal form with the proofs erased:
-;;   a record          a mapping, by field names, in order
+;;   a record          a mapping, by field names, in order; a field that is nothing is left out
+;;   (just x)          x
 ;;   an enumeration    its constructor's name
+;;   other constructors  a mapping of their fields, untagged: the shape tells the cases apart
 ;;   a list            a sequence
 ;;   Nat, String, Bool themselves
 ;;   a refined literal (Port, Region, Arn, a path) its text
-;; ponytail: proofs are erased when they are tt or refl (what auto gives); other proofs, and data
-;; with constructors taking arguments, are refused. Add an optional field (omitted key) when a
-;; model needs one.
+;; ponytail: proofs are erased when they are tt or refl (what auto gives); other proofs are refused.
+;; Untagged: two constructors with the same fields give the same YAML; tag them when a chart needs it.
 
 (require racket/match racket/list racket/string racket/file json
          bottega/check bottega/core/state bottega/core/term bottega/core/eval bottega/core/print
@@ -65,6 +66,7 @@
 
 (struct mapping (pairs))                          ; a record: ((field . data) …), in order
 (define erased (string->uninterned-symbol "proof"))
+(define absent (string->uninterned-symbol "nothing"))
 
 (define (spine t)                                 ; → (values head explicit-arguments)
   (let loop ([t t] [args '()])
@@ -90,24 +92,19 @@
         [(is? 'true) #t]
         [(is? 'false) #f]
         [(or (is? 'tt) (is? 'refl)) erased]
+        [(is? 'nothing) absent]
+        [(is? 'just) (term->data (car args))]
         [(is? 'nil) '()]
         [(is? 'cons) (cons (term->data (car args)) (term->data (cadr args)))]
         [(and (tglob? head) (constructor? (tglob-name head)))
          (define k (tglob-name head))
-         (define siblings (global-info (lookup (data-of k))))
-         (cond [(null? args) (symbol->string k)]  ; an enumeration
-               [(= (length siblings) 1)           ; a record
-                (mapping (for/list ([f (field-names k)] [a args]
-                                    #:unless (eq? (term->data a) erased))
-                           (cons f (term->data a))))]
-               [else (oops "cannot become data, a constructor with arguments: ~s" (term->sexp '() t))])]
+         (if (null? args)
+             (symbol->string k)                   ; an enumeration
+             (mapping (for*/list ([(f a) (in-parallel (field-names k) args)]
+                                  [d (in-value (term->data a))]
+                                  #:unless (or (eq? d erased) (eq? d absent)))
+                        (cons f d))))]
         [else (oops "cannot become data: ~s" (term->sexp '() t))]))
-
-(define (data-of k)                               ; the data a constructor belongs to
-  (let loop ([t (force (global-type (lookup k)))] [l 0])
-    (match t
-      [(vpi _ _ _ _ _) (loop (force (pi-codomain t (vvar l))) (+ l 1))]
-      [(vglob n _) n])))
 
 ;; --- data → YAML ---
 ;; Strings are always quoted, as JSON strings (valid YAML), so "2012-10-17" or "true" stay text.

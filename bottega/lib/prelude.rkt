@@ -209,6 +209,14 @@
     (nil       (list))
     ((:: x xs) (:: (f x) (map f xs)))))
 
+; --- Maybe: a value that may be absent; in a configuration, a key left out ---
+
+(data Maybe : (→ Type Type)
+  (nothing : (Maybe A))
+  (just    : (→ A (Maybe A))))
+(builtin nothing nothing)
+(builtin just just)
+
 ; (Holds p x): p holds on x. It is data and not (So (p x)), so if auto fails it says on which x.
 (data Holds : (→ (→ A Bool) A Type)
   (holds : (Π ((p (→ A Bool)) (x A)) (→ (So (p x)) (Holds p x)))))

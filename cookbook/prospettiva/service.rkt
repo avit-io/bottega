@@ -30,13 +30,19 @@
   (name String)
   (value String))
 
+; Come si vede che è vivo: una richiesta HTTP, o soltanto la porta aperta.
+(data Probe : Type
+  (http : (Π ((path String) (port Port)) Probe))
+  (tcp  : (Π ((port Port)) Probe)))
+
 (record Values
   (stage Env)
   (region Region)
   (containerPort Port)
   (cluster Cluster)
   (replicas Replicas)
-  (hostname String)
+  (probe Probe)
+  (hostname (Maybe String))                       ; nothing: niente ingress, la chiave non c'è
   (env (List Var)))
 
 ; --- il modello ---
@@ -61,11 +67,23 @@
     (prod (replicas 3 10 auto))
     (_    (replicas 1 3 auto))))
 
+(claim probe-of (→ Platform Probe))              ; il legacy non ha /healthz
+(define (probe-of p)
+  (match p
+    (chart  (http "/healthz" (port-of chart)))
+    (legacy (tcp (port-of legacy)))))
+
+(claim hostname-of (→ Env (Maybe String)))        ; dev si raggiunge solo da dentro
+(define (hostname-of e)
+  (match e
+    (dev   nothing)
+    (other (just (string-append (Env.name other) "-service.example.com")))))
+
 (claim main (Π ((e Env)) Values))
 (define (main e)
-  (values e "eu-west-1" (port-of (Cluster.platform (cluster-of e))) (cluster-of e) (replicas-of e)
-          (string-append (Env.name e) "-service.example.com")
-          (list (var "ENVIRONMENT" (Env.name e)) (var "AWS_REGION" "eu-west-1"))))
+  (let ((p (Cluster.platform (cluster-of e))))
+    (values e "eu-west-1" (port-of p) (cluster-of e) (replicas-of e) (probe-of p) (hostname-of e)
+            (list (var "ENVIRONMENT" (Env.name e)) (var "AWS_REGION" "eu-west-1")))))
 
 ; --- le invarianti della proiezione ---
 

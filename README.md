@@ -1,4 +1,4 @@
-<p align="center"><img src="logo.svg" width="200" alt="Bottega: una sfera in chiaroscuro con la sua ombra, a puntini"></p>
+<p align="center"><img src="logo.svg" width="200" alt="Bottega: una sfera in chiaroscuro su un pavimento in prospettiva, a puntini"></p>
 
 # Bottega
 
@@ -13,9 +13,10 @@ il type checker ne prova le proprietà, e un realizzatore che esiste già lo ese
 | `prospettiva` | un modello, molti ambienti come proiezioni; i teoremi sono le invarianti | Nix (flake, derivazioni) | values.yaml per ambiente |
 | `affresco` | l'architettura di Elm, totale, lato server | un runtime Racket | da fare |
 
-Il nome viene dalla bottega rinascimentale: il luogo dove il disegno diventa opera, e dove
-l'apprendista cominciava disegnando una sfera, con la luce, l'ombra e l'ombra portata. È il logo,
-a puntini (`racket tools/logo.rkt > logo.svg`).
+Il nome viene dalla bottega rinascimentale: il luogo dove il disegno diventa opera. L'apprendista
+cominciava da due lezioni, una sfera con la luce, l'ombra e l'ombra portata, e un pavimento a
+scacchi in prospettiva, le cui righe vanno tutte a un punto solo, come in Alberti. Sono il
+disegno e la prospettiva, e insieme fanno il logo, a puntini (`racket tools/logo.rkt > logo.svg`).
 
 ```racket
 #lang bottega
@@ -93,3 +94,8 @@ nix flake check    # i tipi e i teoremi del modello
 ```
 
 Nel `flake.nix` è una riga: `bottega.lib.prospettiva { src = ./.; model = "service.rkt"; }`.
+
+Il YAML viene dalla forma normale, in un modo solo: un record è una mappa con i nomi dei campi,
+un'enumerazione il nome del costruttore, un altro costruttore la mappa dei suoi argomenti, un
+letterale raffinato (`Port`, `Region`, `Arn`) il suo testo, le prove spariscono. Un campo
+`(Maybe T)` che vale `nothing` è una chiave che non c'è.

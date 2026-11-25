@@ -1,6 +1,7 @@
 #lang racket/base
-;; The logo: a sphere in chiaroscuro with its cast shadow, the first exercise of a Renaissance
-;; workshop's apprentices, drawn by stippling: black dots on white, denser where it is darker.
+;; The logo: the first two lessons of a Renaissance workshop. A sphere in chiaroscuro with its cast
+;; shadow (disegno), on a tiled floor in one-point perspective (prospettiva); drawn by stippling,
+;; black dots on white, denser where it is darker.
 ;; racket tools/logo.rkt > logo.svg   (deterministic: the same seed, the same dots)
 
 (require racket/math racket/list)
@@ -19,10 +20,26 @@
      (define lit (max 0 (+ (* dx (car light)) (* dy (cadr light)) (* nz (caddr light)))))
      (define rim (* 0.25 (expt (sqrt d2) 6) (max 0 (+ dx dy))))
      (max 0 (min 1 (- (* 0.95 (- 1 lit)) rim)))]
-    [else                                                    ; the cast shadow, an ellipse on the ground, soft
+    [else                                                    ; the cast shadow, an ellipse on the ground, soft, over the floor
      (define sx (/ (- x (+ cx 45)) (* 1.15 r))) (define sy (/ (- y (+ cy r -8)) (* 0.28 r)))
      (define s (+ (sqr sx) (sqr sy)))
-     (if (< s 1) (* 0.95 (expt (- 1 s) 0.6)) 0)]))
+     (max (if (< s 1) (* 0.95 (expt (- 1 s) 0.6)) 0) (floor-darkness x y))]))
+
+;; The floor: a pavement of square tiles in one-point perspective, Alberti's costruzione
+;; legittima. Every line of tiles goes to the vanishing point on the horizon; far away the tiles
+;; fade, before they become smaller than the dots.
+(define horizon 225) (define eye 60) (define tile 20) (define half-width 3)
+(define (floor-darkness x y)
+  (cond
+    [(<= y horizon) 0]
+    [else
+     (define depth (/ (* eye 400) (- y horizon)))        ; the distance of the floor at this row
+     (define across (/ (* (- x cx) depth) 400))           ; and the position across it
+     (define dark? (odd? (+ (exact-floor (/ across tile)) (exact-floor (/ depth tile)))))
+     (define fade (min 1 (/ (- y horizon) 45)))
+     (if (< (abs across) (* half-width tile))
+         (* fade (if dark? 0.8 0.04))
+         0)]))
 
 ;; Stippling: candidates in random order, kept with probability darkness, never too close.
 (define (stipple n)

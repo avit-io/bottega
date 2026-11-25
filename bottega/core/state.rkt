@@ -61,7 +61,7 @@
    '((nat . data) (zero . con) (suc . con)
     (bool . data) (true . con) (false . con)
     (unit . data) (tt . con) (empty . data) (eq . data) (refl . con) (sigma . data)
-    (list . data) (nil . con) (cons . con)
+    (list . data) (nil . con) (cons . con) (nothing . con) (just . con)
     (string . extern)
     (abs . data) (root . con) (slash . con) (rel . data) (here . con) (step . con) (segment . data)
     (duration . data) (instant . data) (ip . data) (cidr . data)
