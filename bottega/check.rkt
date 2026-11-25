@@ -5,7 +5,7 @@
 ;; ponytail: dependencies are rechecked from source on every check; cache them if it gets slow.
 ;; ponytail: the first error stops the module.
 
-(require racket/runtime-path racket/string racket/list racket/match syntax/modresolve
+(require racket/runtime-path racket/path racket/string racket/list racket/match syntax/modresolve
          "core/state.rkt" "core/surface.rkt" "core/define.rkt" "core/ast.rkt" "core/eval.rkt" "core/print.rkt")
 (provide check-module check-file check-string call-with-checked-file call-with-prelude
          split-requires prelude? register-library! current-languages)
@@ -62,20 +62,22 @@
 (define (call-with-checked-file path thunk)
   (with-fresh-state (λ () (check-module* path (read-module-forms path)) (thunk))))
 
+;; The module is checked in the current scope: after the check it is the module's, for the runner.
 (define (check-module* path forms)
-  (define loaded (make-hash))                      ; normalized path → #t
-  (unless (prelude? path) (load-dependency! prelude-path loaded))
-  (filter values (check-forms path forms loaded)))
+  (filter values (check-forms path forms (make-hash))))
 
+;; Every module sees the prelude, and what it requires.
 (define (check-forms path forms loaded)
   (define-values (specs declarations) (split-requires forms))
+  (unless (prelude? path) (import-scope! (load-dependency! prelude-path loaded)))
   (for ([s specs])
     (at (syntax-loc s)
       (define file (with-handlers ([exn:fail? (λ (_) #f)])
                      (resolve-module-path (syntax->datum s) (and path (normal path)))))
       (unless (and file (file-exists? file)) (oops "require: module ~s not found" (syntax->datum s)))
-      (load-dependency! file loaded)))
-  (parameterize ([privileged (in-library? path)])
+      (import-scope! (load-dependency! file loaded))))
+  (parameterize ([privileged (in-library? path)]
+                 [current-origin (if path (path->string (file-name-from-path path)) "<string>")])
     (for/list ([d (parse-program declarations)])
       (check-declaration d)
       (tooltip d))))
@@ -90,15 +92,21 @@
       [(d-data loc n _ _) (values loc n)]
       [(d-extern loc n _ _) (values loc n)]
       [_ (values #f #f)]))
-  (and loc (srcloc-position loc) (srcloc-span loc) (lookup name)
+  (and loc (srcloc-position loc) (srcloc-span loc) (lookup (scope-ref name))
        (vector (datum->syntax #f name loc) (sub1 (srcloc-position loc)) (+ (sub1 (srcloc-position loc)) (srcloc-span loc))
-               (format "~a : ~s" name (term->sexp '() (reify 0 (global-type (lookup name))))))))
+               (format "~a : ~s" name (term->sexp '() (reify 0 (global-type (lookup (scope-ref name)))))))))
 
+;; Checks a required module once, in a scope of its own. → that scope: what it makes visible.
 (define (load-dependency! path loaded)
   (define key (normal path))
-  (unless (hash-ref loaded key #f)
-    (hash-set! loaded key #t)
-    (check-forms path (read-module-forms path) loaded)))
+  (define seen (hash-ref loaded key #f))
+  (when (eq? seen 'checking) (oops "require: ~a requires itself" path))
+  (or seen
+      (parameterize ([current-scope (make-hasheq)] [current-own (make-hasheq)])
+        (hash-set! loaded key 'checking)
+        (check-forms path (read-module-forms path) loaded)
+        (hash-set! loaded key (current-scope))
+        (current-scope))))
 
 (define (check-file path) (check-module path (read-module-forms path)))
 
@@ -106,4 +114,4 @@
 
 ;; For tests that look inside: a fresh state with the prelude loaded.
 (define (call-with-prelude thunk)
-  (with-fresh-state (λ () (load-dependency! prelude-path (make-hash)) (thunk))))
+  (with-fresh-state (λ () (import-scope! (load-dependency! prelude-path (make-hash))) (thunk))))

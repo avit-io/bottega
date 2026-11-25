@@ -50,12 +50,14 @@
 ;; global: (⊕ /out "bin") is Abs.⊕. → the globals named Type.field, sorted.
 (define (qualified f)
   (define suffix (string-append "." (symbol->string f)))
-  (sort (filter (λ (n) (let ([s (symbol->string n)])
-                         (and (> (string-length s) (string-length suffix)) (string-suffix? s suffix))))
-                (all-global-names))
+  (sort (for/list ([(x n) (current-scope)]
+                   #:when (symbol? n)
+                   #:when (let ([s (symbol->string x)])
+                            (and (> (string-length s) (string-length suffix)) (string-suffix? s suffix))))
+          n)
         symbol<?))
 
-(define (short-name? c f) (and (not (local? c f)) (not (lookup f)) (pair? (qualified f))))
+(define (short-name? c f) (and (not (local? c f)) (not (lookup (resolve f))) (pair? (qualified f))))
 
 (define (self-type n)                          ; the type of the first explicit argument, reified
   (let loop ([t (force (global-type (lookup n)))] [l 0])
@@ -102,7 +104,7 @@
         [(index-of (ctx-names c) x) => (λ (i) (values (tvar i) (list-ref (ctx-types c) i)))]
         [(assq x (ctx-defs c)) => (λ (d) (values (reify (ctx-level c) (cadr d)) (caddr d)))]
         [(and (not (privileged)) (core-reserved? x)) (oops "~a is reserved to the core" x)]
-        [(lookup x) => (λ (g) (values (tglob x) (global-type g)))]
+        [(resolve x) => (λ (n) (values (tglob n) (global-type (lookup n))))]
         [(root-field x) => (λ (n) (values (tglob n) (global-type (lookup n))))]
         [(path-literal? x) (values (path-term c x) (vglob (builtin 'abs) '()))]
         [else (unknown-name x)]))
@@ -190,7 +192,7 @@
     [(s-lit _ (? string? s)) #:when (literal-reader want) (check-literal s want)]
     [(s-lit _ (? string? s)) #:when (builtin-type? want 'rel) (rel-term c s)]
     [(s-list _ items) #:when (builtin-type? want 'list) (list-term c items want)]
-    [(s-app _ (s-name _ f) _) #:when (and (lookup f) (not (local? c f)))
+    [(s-app _ (s-name _ f) _) #:when (and (not (local? c f)) (resolve f))
      (or (check-introduction c e want) (check-inferred c e ty))]
     [_ (check-inferred c e ty)]))
 
@@ -211,7 +213,8 @@
 (define (check-introduction c e want)
   (match-define (s-app _ (s-name _ f) args) e)
   (when (and (not (privileged)) (core-reserved? f)) (oops "~a is reserved to the core" f))
-  (let loop ([kt (global-type (lookup f))] [args args] [spine '()])
+  (define g (resolve f))
+  (let loop ([kt (global-type (lookup g))] [args args] [spine '()])
     (match (force kt)
       [(and p (vpi _ vis dom _ _)) #:when (or (eq? vis 'i) (pair? args))
        (define m (timeta (new-meta! #f #f)))
@@ -222,7 +225,7 @@
       [_ #:when (pair? args) #f]
       [result
        (and (unifies? c result want)
-            (for/fold ([t (tglob f)]) ([s (reverse spine)])
+            (for/fold ([t (tglob g)]) ([s (reverse spine)])
               (if (eq? (pending-vis s) 'i)
                   (tapp t (pending-meta s) 'i)
                   (let ([u (check c (pending-arg s) (pending-dom s))])
@@ -450,13 +453,13 @@
   (define (walk e bound)
     (match e
       [(s-name loc x)
-       (unless (or (eq? x '_) (memq x bound) (memq x found) (lookup x) (root-field x) (path-literal? x))
+       (unless (or (eq? x '_) (memq x bound) (memq x found) (resolve x) (root-field x) (path-literal? x))
          (if (variable-shaped? x) (set! found (cons x found)) (at loc (unknown-name x))))]
       [(s-lam _ xs body) (walk body (append xs bound))]
       [(s-let _ bs body) (walk body (for/fold ([bound bound]) ([b bs]) (walk (cdr b) bound) (cons (car b) bound)))]
       [(s-arrow _ bs result)
        (walk result (for/fold ([bound bound]) ([b bs]) (walk (binder-type b) bound) (cons (binder-name b) bound)))]
-      [(s-app _ (s-name _ f) args) #:when (and (not (memq f bound)) (not (lookup f)) (pair? (qualified f)))
+      [(s-app _ (s-name _ f) args) #:when (and (not (memq f bound)) (not (resolve f)) (pair? (qualified f)))
        (for ([a args]) (walk a bound))]           ; a short name: resolved from the type
       [(s-app _ head args) (walk head bound) (for ([a args]) (walk a bound))]
       [(s-the _ type x) (walk type bound) (walk x bound)]

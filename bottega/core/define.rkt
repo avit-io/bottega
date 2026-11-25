@@ -18,9 +18,10 @@
 
 (define reserved-words '(→ Type _ TODO pipe auto let λ the))
 
+;; A name this module defines: → its internal name (state.rkt, names).
 (define (fresh-name! n)
   (when (memq n reserved-words) (oops "~a is a reserved word" n))
-  (when (lookup n) (oops "~a is already defined" n)))
+  (declare! n))
 
 ;; ============================================================================================
 ;; data
@@ -31,13 +32,14 @@
 (struct telescope (fields indices))              ; indices: the spine of the result
 
 (define (check-data d)
-  (match-define (d-data _ name sig constructors) d)
-  (fresh-name! name)
+  (match-define (d-data _ name* sig constructors*) d)
+  (define name (fresh-name! name*))
   (define t (elaborate-signature sig))
   (kernel-type-level t)
   (define level (data-level (evaluate '() t)))
   (define-global! name (global 'data (evaluate '() t) '()))
-  (define types (for/list ([k constructors]) (fresh-name! (car k)) (elaborate-signature (cdr k))))
+  (define constructors (for/list ([k constructors*]) (cons (fresh-name! (car k)) (cdr k))))
+  (define types (for/list ([k constructors]) (elaborate-signature (cdr k))))
   (define teles (for/list ([k constructors] [ct types]) (constructor-telescope name (car k) ct)))
   (define params (parameter-positions teles))
   (for ([k constructors] [tl teles]) (check-constructor name level params (car k) tl))
@@ -111,8 +113,9 @@
 ;; ============================================================================================
 
 (define (check-define d)
-  (match-define (d-define loc name type clauses _) d)
-  (define t (at loc (fresh-name! name) (elaborate-signature type)))   ; at the claim
+  (match-define (d-define loc name* type clauses _) d)
+  (define name (at loc (fresh-name! name*)))
+  (define t (at loc (elaborate-signature type)))   ; at the claim
   (record-signature! name t)
   (check-definition name t clauses))
 
@@ -142,8 +145,8 @@
 (define (normalize-pattern p)
   (cond [(null? p) '()]                                    ; the absurd pattern
         [(exact-nonnegative-integer? p) (if (zero? p) 'zero `(add1 ,(normalize-pattern (- p 1))))]
-        [(symbol? p) p]                                    ; a variable or a constructor: the type decides
-        [(and (pair? p) (constructor? (car p))) (cons (car p) (map normalize-pattern (cdr p)))]
+        [(symbol? p) (if (constructor? (scope-ref* p)) (scope-ref* p) p)]  ; a variable or a constructor: the type decides
+        [(and (pair? p) (constructor? (scope-ref* (car p)))) (cons (scope-ref* (car p)) (map normalize-pattern (cdr p)))]
         [else (oops "invalid pattern: ~s" p)]))
 
 ;; --- the state of the clause being checked ---
@@ -423,10 +426,10 @@
 ;; it returns an opaque type of another extern. Never a proposition: no data from the world
 ;; comes back into the language as a fact.
 (define (check-extern d)
-  (match-define (d-extern _ name type spec*) d)
+  (match-define (d-extern _ name* type spec*) d)
   (unless (privileged) (oops "extern is reserved to the standard library"))
   (define spec (if (symbol? spec*) (list spec*) spec*))
-  (fresh-name! name)
+  (define name (fresh-name! name*))
   (define t (elaborate-signature type))
   (kernel-type-level t)
   (let loop ([r t] [names '()])
@@ -443,10 +446,14 @@
        (define-global! name (global 'extern (evaluate '() t) (cons spec (reverse names))))])))
 
 ;; (builtin nat Nat): trusted like extern, only the kind of the name is checked.
-(define (check-builtin key name)
+(define (check-builtin key name*)
+  (define name (resolve name*))
   (unless (privileged) (oops "builtin is reserved to the standard library"))
   (define kind (builtin-key-kind key))
   (unless kind (oops "builtin: unknown key ~a" key))
   (when (builtin key) (oops "builtin: ~a is already bound to ~a" key (builtin key)))
   (unless (global-kind? name kind) (oops "builtin ~a: ~a is not a ~a" key name kind))
   (bind-builtin! key name))
+
+;; A name in a pattern: its internal name, or #f if it is not a global (then it is a variable).
+(define (scope-ref* x) (let ([n (scope-ref x)]) (and (symbol? n) n)))

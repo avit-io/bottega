@@ -129,3 +129,38 @@
 (accepts "(record (Box A) (value A) (same (≡ value value)))
 (claim b (Box Nat))\n(define b (box 3 refl))
 (claim b-value (≡ (Box.value b) 3))\n(define b-value refl)")
+
+;; --- namespaces: a module's names are its own ---
+;; It sees what it requires (and what those require); its own definitions hide the imported
+;; ones; a name two imports define differently is ambiguous where it is used.
+
+(define (modules files main)                     ; files: ((name . source) …) → main's error, or #f
+  (define dir (make-temporary-directory))
+  (for ([f files]) (call-with-output-file (build-path dir (car f)) (λ (o) (write-string (cdr f) o))))
+  (call-with-output-file (build-path dir "main.rkt") (λ (o) (write-string main o)))
+  (begin0 (with-handlers ([exn:fail? exn-message]) (check-file (build-path dir "main.rkt")) #f)
+          (delete-directory/files dir)))
+
+(define account-lib
+  (cons "account.rkt" "#lang bottega\n(record Account (id Nat))\n(claim one Account)\n(define one (account 1))\n(data Color (red))\n"))
+
+;; account is the library's constructor; here it is a number, and the library still works
+(check-false (modules (list account-lib) "#lang bottega\n(require \"account.rkt\")
+(claim account Nat)\n(define account 7)
+(claim seven (≡ account 7))\n(define seven refl)
+(claim still-one (≡ (Account.id one) 1))\n(define still-one refl)\n"))
+;; a hidden type is printed by its name
+(let ([m (modules (list account-lib) "#lang bottega\n(require \"account.rkt\")
+(data Color (blue))\n(claim c Color)\n(define c 5)\n")])
+  (check-true (and m (string-contains? m "expected Color, found Nat") #t) m))
+;; still one module, one name
+(check-true (string-contains? (modules (list account-lib) "#lang bottega\n(claim x Nat)\n(define x 1)\n(claim x Nat)\n(define x 2)\n")
+                              "x is already defined"))
+;; two libraries, the same name: fine until it is used
+(define other-lib (cons "other.rkt" "#lang bottega\n(claim one Nat)\n(define one 1)\n"))
+(check-false (modules (list account-lib other-lib) "#lang bottega\n(require \"account.rkt\" \"other.rkt\")\n(claim two Nat)\n(define two 2)\n"))
+(let ([m (modules (list account-lib other-lib) "#lang bottega\n(require \"account.rkt\" \"other.rkt\")\n(claim two Nat)\n(define two (+ one one))\n")])
+  (check-true (and m (string-contains? m "one is ambiguous: account.rkt, other.rkt") #t) m))
+;; what is not required is not seen
+(let ([m (modules (list account-lib) "#lang bottega\n(claim o Account)\n(define o (account 1))\n")])
+  (check-true (and m (string-contains? m "unknown name: Account") #t) m))

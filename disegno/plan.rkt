@@ -180,12 +180,13 @@
   (define v (getenv s))
   (if (or (not v) (string=? v ""))
       (evaluate '() default)
-      (let ([k (findf (λ (k) (string=? (symbol->string k) v)) ks)])
-        (unless k (oops "~a: «~a» is not one of ~a" s v (string-join (map symbol->string ks) ", ")))
+      (let ([k (findf (λ (k) (string=? (symbol->string (display-name k)) v)) ks)])
+        (unless k (oops "~a: «~a» is not one of ~a" s v (string-join (map (λ (k) (symbol->string (display-name k))) ks) ", ")))
         (vglob k '()))))
 
-(define (entry-value entry)
-  (define sig (or (signature-of entry) (oops "~a is missing" entry)))
+(define (entry-value entry*)
+  (define entry (or (resolve entry*) (oops "~a is missing" entry*)))
+  (define sig (or (signature-of entry) (oops "~a is missing" entry*)))
   (define inputs
     (let loop ([t sig])
       (match t

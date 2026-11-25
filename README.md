@@ -42,6 +42,9 @@ disegno e la prospettiva, e insieme fanno il logo, a puntini (`racket tools/logo
 - **`TODO`**, come in Pie: un buco nel corpo; il checker stampa il contesto e l'obiettivo.
 - **Librerie curate**: `extern` e `builtin` stanno solo in `bottega/lib`; un programma le richiede
   con `require`.
+- **Ogni modulo ha i suoi nomi**: vede quello che richiede, e una sua definizione nasconde quella
+  importata (`account` può essere la tua funzione anche se `aws` ha il costruttore `account`). Un
+  nome che due moduli richiesti definiscono in modo diverso è ambiguo dove lo si usa.
 
 ## Uso
 

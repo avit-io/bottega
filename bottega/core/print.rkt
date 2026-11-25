@@ -10,7 +10,7 @@
   (or (literal-of t)
       (match t
         [(tvar i) (if (< i (length names)) (list-ref names i) `(var ,i))]
-        [(tglob n) n]
+        [(tglob n) (display-name n)]
         [(tstr s) s]
         [(tnum n) n]
         [(ttype 0) 'Type]

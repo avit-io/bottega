@@ -52,15 +52,15 @@
 
 (define (environments)                            ; → ((name . data) …), in the order of the constructors
   (define env
-    (match (signature-of 'main)
+    (match (signature-of (resolve 'main))
       [(tpi _ 'e (tglob n) _) #:when (global-kind? n 'data) n]
       [#f (oops "main is missing: (claim main (Π ((e Env)) Config))")]
       [_ (oops "main takes an environment: (claim main (Π ((e Env)) Config)), Env a data")]))
   (for/list ([k (global-info (lookup env))])
     (unless (vglob? (force (global-type (lookup k))))
       (oops "~a: an environment is a constructor without arguments" k))
-    (define v (apply-spine (evaluate '() (tglob 'main)) (list (cons (vglob k '()) 'e))))
-    (cons (symbol->string k) (term->data (reify 0 v)))))
+    (define v (apply-spine (evaluate '() (tglob (resolve 'main))) (list (cons (vglob k '()) 'e))))
+    (cons (symbol->string (display-name k)) (term->data (reify 0 v)))))
 
 ;; --- normal forms → data ---
 
@@ -99,7 +99,7 @@
         [(and (tglob? head) (constructor? (tglob-name head)))
          (define k (tglob-name head))
          (if (null? args)
-             (symbol->string k)                   ; an enumeration
+             (symbol->string (display-name k))     ; an enumeration
              (mapping (for*/list ([(f a) (in-parallel (field-names k) args)]
                                   [d (in-value (term->data a))]
                                   #:unless (or (eq? d erased) (eq? d absent)))
