@@ -8,7 +8,7 @@
 (require racket/runtime-path racket/path racket/string racket/list racket/match syntax/modresolve
          "core/state.rkt" "core/surface.rkt" "core/define.rkt" "core/ast.rkt" "core/eval.rkt" "core/print.rkt")
 (provide check-module check-file check-string call-with-checked-file call-with-prelude
-         split-requires prelude? register-library! current-languages)
+         split-requires prelude? register-library! current-languages current-implicit)
 
 (define-runtime-path lib-dir "lib")
 (define-runtime-path prelude-path "lib/prelude.rkt")
@@ -26,6 +26,9 @@
 
 ;; The #lang names a module may require: bottega, and the dialect being compiled.
 (define current-languages (make-parameter '("bottega")))
+
+;; The modules a dialect's programs require without saying so (affresco: its Html).
+(define current-implicit (make-parameter '()))
 
 ;; --- reading ---
 
@@ -70,6 +73,8 @@
 (define (check-forms path forms loaded)
   (define-values (specs declarations) (split-requires forms))
   (unless (prelude? path) (import-scope! (load-dependency! prelude-path loaded)))
+  (unless (in-library? path)
+    (for ([m (current-implicit)]) (import-scope! (load-dependency! (resolve-module-path m #f) loaded))))
   (for ([s specs])
     (at (syntax-loc s)
       (define file (with-handlers ([exn:fail? (λ (_) #f)])

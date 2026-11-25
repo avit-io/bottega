@@ -1,0 +1,66 @@
+#lang racket/base
+;; #lang affresco: the example's proofs reject a wrong program; the runtime turns events into
+;; patches; and patches turn the old page into the new one.
+
+(require rackunit racket/file racket/string racket/runtime-path
+         bottega/check affresco/run (only-in affresco/dialect languages implicit))
+
+(define-runtime-path root "..")
+(define counter (build-path root "cookbook" "affresco" "counter.rkt"))
+
+;; --- the proofs are the tests: each change breaks one ---
+
+(define (rejects-change from to expected)
+  (define src (string-replace (file->string counter) from to #:all? #f))
+  (check-true (string-contains? src to))
+  (define msg (with-handlers ([exn:fail? exn-message])
+                (parameterize ([current-languages languages] [current-implicit implicit])
+                  (check-string (cadr (regexp-match #px"^#lang affresco\n(.*)$" src))))
+                #f))
+  (check-true (and msg (string-contains? msg expected) #t) (format "~a → ~a: expected «~a», got ~s" from to expected msg)))
+
+;; inc counts two: dec no longer undoes it
+(rejects-change "(inc (model (add1 (Model.count m))" "(inc (model (add1 (add1 (Model.count m)))" "inc-then-dec: refl: expected")
+;; reset forgets the name
+(rejects-change "(reset (model 0 (Model.name m)))" "(reset (model 0 \"\"))" "reset-keeps-name: refl: expected")
+;; the buttons in another order
+(rejects-change "(list (button (list (on-click dec))" "(list (button (list (on-click inc))" "three-buttons: refl: expected")
+;; the field ignores what is typed
+(rejects-change "(on-input rename)" "(on-input (λ (s) (rename \"x\")))" "typing-renames: refl: expected")
+
+;; --- the runtime: a click, a keystroke ---
+
+(parameterize ([current-languages languages] [current-implicit implicit])
+  (call-with-checked-file counter
+    (λ ()
+      (define s (new-session))
+      (check-equal? (session-page s)
+                    '((div ((class "card"))
+                           (h1 () "contatore")
+                           (input ((value "contatore") (data-on "input")))
+                           (div ((class "row"))
+                                (button ((data-on "click")) "−")
+                                (button ((data-on "click")) "0")
+                                (span ((class "digits")) "0")
+                                (button ((data-on "click")) "+")))))
+      (check-equal? (step! s '(0 2 3) "click" "") '((text (0 2 2 0) "1")))          ; +
+      (check-equal? (step! s '(0 2 3) "click" "") '((text (0 2 2 0) "2")))
+      (check-equal? (step! s '(0 1) "input" "ciao")                                 ; the field
+                    '((text (0 0 0) "ciao") (set (0 1) "value" "ciao")))
+      (check-equal? (step! s '(0 2 1) "click" "") '((text (0 2 2 0) "0")))          ; reset
+      (check-equal? (step! s '(9 9) "click" "") '()))))                             ; nothing there
+
+;; --- diff, then patch, gives the new page ---
+
+(define pages
+  '(()
+    ("a")
+    ((p () "a") "b")
+    ((p ((class "x")) "a" (b () "c")))
+    ((p ((class "y") (id "i")) "a" (i () "c")))
+    ((div () (p () "a") (p () "b")))
+    ((div () (p () "a")))
+    ((span () "a") "b")))
+
+(for* ([a pages] [b pages])
+  (check-equal? (patch (diff a b) a) b (format "~s → ~s" a b)))

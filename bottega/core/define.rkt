@@ -117,7 +117,20 @@
   (define name (at loc (fresh-name! name*)))
   (define t (at loc (elaborate-signature type)))   ; at the claim
   (record-signature! name t)
-  (check-definition name t clauses))
+  (naming name* (λ () (check-definition name t clauses))))
+
+;; An error inside a define says which: a broken proof is a failing test, and its name tells which.
+(define (naming name thunk)
+  (with-handlers ([exn:fail:bottega?
+                   (λ (e)
+                     (define where (exn:fail:bottega-where e))
+                     (define prefix (if where (string-append (srcloc->string where) ": ") ""))
+                     (define msg (substring (exn-message e) (string-length prefix)))
+                     (if (regexp-match? (regexp (string-append "^" (regexp-quote (symbol->string name)) "[: ]")) msg)
+                         (raise e)
+                         (raise (exn:fail:bottega (string-append prefix (symbol->string name) ": " msg)
+                                                  (exn-continuation-marks e) where))))])
+    (thunk)))
 
 ;; Also used by the elaborator, for the auxiliary defines of match and auto.
 (define (check-definition name t clauses)

@@ -11,7 +11,7 @@ il type checker ne prova le proprietà, e un realizzatore che esiste già lo ese
 | `bottega` | la logica: Π, Σ, ≡, `data`, `record`, match dipendente, `auto` | — | fatto |
 | `disegno` | la pipeline: il progetto, non l'esecuzione | Dagger (1.0 beta.28) | piano e run, AWS, git, ArgoCD; parità con Chez anche su be-tsid |
 | `prospettiva` | un modello, molti ambienti come proiezioni; i teoremi sono le invarianti | Nix (flake, derivazioni) | values.yaml per ambiente |
-| `affresco` | l'architettura di Elm, totale, lato server | un runtime Racket | da fare |
+| `affresco` | l'architettura di Elm, totale, lato server; le prove sono i test | un runtime Racket (HTTP) | vista, diff ed eventi; un contatore d'esempio |
 
 Il nome viene dalla bottega rinascimentale: il luogo dove il disegno diventa opera. L'apprendista
 cominciava da due lezioni, una sfera con la luce, l'ombra e l'ombra portata, e un pavimento a
@@ -60,6 +60,9 @@ dagger api with-session racket cookbook/02-go-build.rkt run           # l'opera,
 
 racket cookbook/prospettiva/service.rkt show qa                       # una proiezione, in YAML
 nix build .#example                                                   # tutte, come derivazione
+
+racket cookbook/affresco/counter.rkt serve 8080                       # un programma, su localhost:8080
+nix run .#counter -- 8080                                             # lo stesso, costruito da Nix
 nix flake check                                                       # i teoremi e i test
 ```
 
@@ -71,7 +74,8 @@ bottega/core/   il nucleo: superficie, elaborazione, kernel, definizioni
 bottega/lib/    la libreria standard: prelude, text, affine, paths, time, net, aws
 disegno/        il dialetto: piano, runner, sessione, generatore; disegno/lib le librerie: dagger, files, delivery, git, argocd, aws
 prospettiva/    il dialetto dei modelli: proiezioni e YAML
-book/           il libro          cookbook/  le ricette; prospettiva/ il modello d’esempio e il template
+affresco/       il dialetto dei programmi: runtime, diff, server; affresco/lib Html e Program
+book/           il libro          cookbook/  le ricette; prospettiva/ e affresco/ gli esempi e i template
 tests/          i test e i golden  tools/     il logo
 ```
 
@@ -102,3 +106,22 @@ Il YAML viene dalla forma normale, in un modo solo: un record è una mappa con i
 un'enumerazione il nome del costruttore, un altro costruttore la mappa dei suoi argomenti, un
 letterale raffinato (`Port`, `Region`, `Arn`) il suo testo, le prove spariscono. Un campo
 `(Maybe T)` che vale `nothing` è una chiave che non c'è.
+
+### Un programma, e le sue prove
+
+Un programma affresco è l'architettura di Elm: lo stato iniziale, `update` che a un messaggio
+fa corrispondere il nuovo stato, `view` che dallo stato fa la pagina. Il runtime tiene lo stato
+sul server, e al browser manda solo le differenze tra una pagina e la successiva. I test si
+scrivono prima, ma sono prove: «dec annulla inc», «la vista offre tre bottoni, in quest'ordine,
+in ogni stato», «scrivere nel campo rinomina». Se il programma le rompe non compila, e l'errore
+dice quale:
+
+```
+counter.rkt:74:26: three-buttons: refl: expected (≡ (:: inc (:: reset (:: inc nil))) (:: dec …
+```
+
+```
+nix flake init -t github:avit-io/bottega#affresco
+nix build           # le prove
+nix run . -- 8080   # il programma
+```

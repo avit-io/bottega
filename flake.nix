@@ -54,11 +54,12 @@
         buildPhase = ''
           export HOME=$TMPDIR PLTCOLLECTS="$PWD:"
           raco make bottega/main.rkt bottega/lib/*.rkt prospettiva/render.rkt prospettiva/language.rkt \
-                    disegno/run.rkt disegno/language.rkt disegno/lib/*.rkt
+                    disegno/run.rkt disegno/language.rkt disegno/lib/*.rkt \
+                    affresco/run.rkt affresco/language.rkt affresco/lib/*.rkt
         '';
         installPhase = ''
           mkdir -p $out/share/bottega
-          cp -r info.rkt bottega prospettiva disegno $out/share/bottega/
+          cp -r info.rkt bottega prospettiva disegno affresco $out/share/bottega/
           makeWrapper ${pkgs.racket}/bin/racket $out/bin/racket --set PLTCOLLECTS "$out/share/bottega:"
           makeWrapper ${pkgs.racket}/bin/raco $out/bin/raco --set PLTCOLLECTS "$out/share/bottega:"
         '';
@@ -73,18 +74,31 @@
           export HOME=$TMPDIR
           ${bottega}/bin/racket ${src}/${model} render $out
         '';
+
+      # An affresco program: compiling it checks its types and proofs; bin/<name> PORT serves it.
+      #   bottega.lib.affresco { src = ./.; program = "app.rkt"; name = "app"; }
+      affresco = { src, program, name ? "affresco" }:
+        pkgs.runCommand name { nativeBuildInputs = [ pkgs.makeWrapper ]; meta.mainProgram = name; } ''
+          export HOME=$TMPDIR
+          mkdir -p $out/share $out/bin
+          cp -r ${src} $out/share/app && chmod -R u+w $out/share/app
+          ${bottega}/bin/raco make $out/share/app/${program}
+          makeWrapper ${bottega}/bin/racket $out/bin/${name} --add-flags "$out/share/app/${program} serve"
+        '';
     in {
       packages.${system} = {
         inherit dagger bottega;
         default = bottega;
         example = prospettiva { src = ./cookbook/prospettiva; model = "service.rkt"; name = "service"; };
+        counter = affresco { src = ./cookbook/affresco; program = "counter.rkt"; name = "counter"; };
       };
 
-      lib = { inherit prospettiva; };
+      lib = { inherit prospettiva affresco; };
 
       # nix flake check: the example's theorems, and the test suite.
       checks.${system} = {
         example = self.packages.${system}.example;
+        counter = self.packages.${system}.counter;
         tests = pkgs.runCommand "bottega-tests" { } ''
           export HOME=$TMPDIR
           cp -r ${self} src && chmod -R u+w src && cd src
@@ -97,6 +111,10 @@
       templates.prospettiva = {
         path = ./cookbook/prospettiva;
         description = "A prospettiva model: one service, its environments as projections, built by Nix";
+      };
+      templates.affresco = {
+        path = ./cookbook/affresco;
+        description = "An affresco program: Elm's architecture, total, on the server; its proofs are its tests";
       };
 
       # PLTCOLLECTS: the repository is the bottega collection, without raco pkg install.
