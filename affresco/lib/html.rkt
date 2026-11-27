@@ -122,3 +122,35 @@
 (claim clicks-in-order (≡ (clicks (div (list (on-click 1)) (list (button (list (class "x") (on-click 2)) (list)) (text "t"))))
                           (list 1 2)))
 (define clicks-in-order refl)
+
+; --- Ocra: la forma dice il ruolo ---
+
+; Ciò che si applica è tondo, ciò che si valuta è squadrato: un nodo ha la classe btn se e solo
+; se ha un click. Un bottone senza btn, o un btn che non fa niente, e la prova non si chiude.
+(claim applies? (→ (List (Attr M)) Bool))         ; ha un click
+(define (applies? as)
+  (match as
+    (nil false)
+    ((:: (on-click _) more) true)
+    ((:: _ more) (applies? more))))
+
+(claim rounded? (→ (List (Attr M)) Bool))         ; ha la classe btn
+(define (rounded? as)
+  (match as
+    (nil false)
+    ((:: (attr k v) more) (or (and (same? k "class") (re? "(.* )?btn( .*)?" v)) (rounded? more)))
+    ((:: _ more) (rounded? more))))
+
+(claim ocra-shapes (→ (Html M) Bool))
+(define (ocra-shapes h)
+  (match h
+    (end true)
+    ((text-then _ next) (ocra-shapes next))
+    ((node _ as cs next) (and (if (applies? as) (rounded? as) (not (rounded? as)))
+                              (and (ocra-shapes cs) (ocra-shapes next))))))
+
+(claim ocra-round-applies (≡ (ocra-shapes (the (Html Nat) (div (list) (list (button (list (class "btn btn--quiet") (on-click 1)) (list))))))
+                             true))
+(define ocra-round-applies refl)
+(claim ocra-square-is-silent (≡ (ocra-shapes (the (Html Nat) (span (list (class "btn")) (list)))) false))
+(define ocra-square-is-silent refl)

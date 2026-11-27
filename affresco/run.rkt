@@ -17,7 +17,7 @@
 (require racket/match racket/list racket/string racket/async-channel json xml net/url
          web-server/servlet-env web-server/http
          bottega/check bottega/core/state bottega/core/term bottega/core/eval
-         "dialect.rkt")
+         "dialect.rkt" "ocra.rkt")
 (provide main-program new-session step! fire! session-page session-every diff patch)
 
 (define (main-program file)
@@ -220,8 +220,7 @@
 (define (shell id body)
   (string-append
    "<!doctype html><html><head><meta charset=\"utf-8\"><title>affresco</title>"
-   "<style>body{font-family:Georgia,serif;margin:3em} .card{max-width:24em} .row{display:flex;gap:.5em;align-items:center}"
-   " button{font:inherit;padding:.2em .8em} .digits{min-width:2em;text-align:center}</style></head><body>"
+   "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><style>" (ocra-css) "</style></head><body>"
    "<div id=\"affresco\" data-session=\"" id "\">" body "</div><script>" client "</script></body></html>"))
 
 ;; The browser: events up by POST, patches down by one stream, in the server's order.

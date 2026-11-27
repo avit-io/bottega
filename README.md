@@ -127,6 +127,12 @@ mentre corre, e lo prova: «fermo, il tempo non lo raggiunge». Il runtime accen
 quando le iscrizioni cambiano; clic e tick arrivano al browser su un solo stream, nell'ordine del
 server. `Cmd` non c'è: `update` resta puro.
 
+La pagina è in Ocra, il sistema visivo di affresco: ocra e nero di vite, in due temi. I token
+stanno in `affresco/ocra.rkt`, che genera anche il tema Tailwind (`racket affresco/ocra.rkt
+tailwind`). La sua regola, «ciò che si applica è tondo, ciò che si valuta è squadrato», è una prova:
+`ocra-shapes` controlla che un nodo abbia la classe `btn` se e solo se ha un click, e un bottone
+squadrato non compila (`rounded-iff-applies: refl: expected`).
+
 ```
 nix flake init -t github:avit-io/bottega#affresco
 nix build           # le prove

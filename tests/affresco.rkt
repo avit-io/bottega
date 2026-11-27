@@ -26,7 +26,11 @@
 ;; reset forgets the name
 (rejects-change "(reset (model 0 (Model.name m)))" "(reset (model 0 \"\"))" "reset-keeps-name: refl: expected")
 ;; the buttons in another order
-(rejects-change "(list (button (list (on-click dec))" "(list (button (list (on-click inc))" "three-buttons: refl: expected")
+(rejects-change "(list (button (list (class \"btn\") (on-click dec))" "(list (button (list (class \"btn\") (on-click inc))" "three-buttons: refl: expected")
+;; a button that is not round (Ocra)
+(rejects-change "(button (list (class \"btn\") (on-click reset))" "(button (list (on-click reset))" "rounded-iff-applies: refl: expected")
+;; something round that does nothing (Ocra)
+(rejects-change "(span (list (class \"digits\"))" "(span (list (class \"digits btn\"))" "rounded-iff-applies: refl: expected")
 ;; the field ignores what is typed
 (rejects-change "(on-input rename)" "(on-input (λ (s) (rename \"x\")))" "typing-renames: refl: expected")
 
@@ -41,10 +45,10 @@
                            (h1 () "contatore")
                            (input ((value "contatore") (data-on "input")))
                            (div ((class "row"))
-                                (button ((data-on "click")) "−")
-                                (button ((data-on "click")) "0")
+                                (button ((class "btn") (data-on "click")) "−")
+                                (button ((class "btn") (data-on "click")) "0")
                                 (span ((class "digits")) "0")
-                                (button ((data-on "click")) "+")))))
+                                (button ((class "btn") (data-on "click")) "+")))))
       (check-equal? (step! s '(0 2 3) "click" "") '((text (0 2 2 0) "1")))          ; +
       (check-equal? (step! s '(0 2 3) "click" "") '((text (0 2 2 0) "2")))
       (check-equal? (step! s '(0 1) "input" "ciao")                                 ; the field
@@ -87,3 +91,16 @@
 
 (for* ([a pages] [b pages])
   (check-equal? (patch (diff a b) a) b (format "~s → ~s" a b)))
+
+;; --- Ocra: one source for the page and for Tailwind ---
+
+(require affresco/ocra)
+(let ([css (ocra-css)] [tw (ocra-tailwind)])
+  (define (block from) (car (regexp-match (pregexp (string-append (regexp-quote from) "[^}]*")) css)))
+  (for ([c colors])
+    (define name (symbol->string (car c)))
+    (check-true (string-contains? (block ":root{") (format "--~a:~a" name (cadr c))) name)        ; light
+    (check-true (string-contains? (block ":root[data-theme=\"dark\"]{") (format "--~a:~a" name (caddr c))) name)
+    (check-true (string-contains? tw (format "--color-~a: var(--~a);" name name)) name))
+  (check-true (regexp-match? #px"\\.btn\\{[^}]*border-radius:var\\(--radius-paren\\)" css))       ; apply is round
+  (check-true (regexp-match? #px"\\.card\\{[^}]*border-radius:var\\(--radius-0\\)" css)))         ; eval is square

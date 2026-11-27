@@ -20,8 +20,8 @@
 ;; A regular expression matched against the whole string. A malformed pattern is a type error.
 (define (re? pattern s)
   (define rx (with-handlers ([exn:fail? (λ (_) (oops "re?: malformed regular expression: ~s" pattern))])
-               (pregexp pattern)))
-  (regexp-match-exact? rx s))
+               (pregexp (string-append "^(?:" pattern ")$"))))  ; anchored: the whole of s, with backtracking
+  (regexp-match? rx s))
 
 ;; A path step: not empty, no /, neither . nor ..
 (define (segment? s)

@@ -40,10 +40,10 @@
        (list (h1 (list) (list (text (Model.name m))))
              (input (list (value (Model.name m)) (on-input rename)))
              (div (list (class "row"))
-                  (list (button (list (on-click dec)) (list (text "−")))
-                        (button (list (on-click reset)) (list (text "0")))
+                  (list (button (list (class "btn") (on-click dec)) (list (text "−")))
+                        (button (list (class "btn") (on-click reset)) (list (text "0")))
                         (span (list (class "digits")) (list (text (show (Model.count m)))))
-                        (button (list (on-click inc)) (list (text "+"))))))))
+                        (button (list (class "btn") (on-click inc)) (list (text "+"))))))))
 
 (claim main (Program Model Msg))
 (define main (program init update view silent))
@@ -76,3 +76,7 @@
 ; scrivere nel campo rinomina
 (claim typing-renames (Π ((m Model) (s String)) (≡ (typed (view m) s) (list (rename s)))))
 (define (typing-renames m s) refl)
+
+; ciò che si applica è tondo, e solo quello (Ocra)
+(claim rounded-iff-applies (Π ((m Model)) (≡ (ocra-shapes (view m)) true)))
+(define (rounded-iff-applies m) refl)

@@ -35,9 +35,9 @@
   (div (list (class "card"))
        (list (h1 (list) (list (text "cronometro")))
              (div (list (class "row"))
-                  (list (button (list (on-click toggle)) (list (text (if (Model.running m) "ferma" "parti"))))
+                  (list (button (list (class "btn") (on-click toggle)) (list (text (if (Model.running m) "ferma" "parti"))))
                         (span (list (class "digits")) (list (text (show (Model.seconds m)))))
-                        (button (list (on-click reset)) (list (text "0"))))))))
+                        (button (list (class "btn") (on-click reset)) (list (text "0"))))))))
 
 (claim subs (→ Model (List (Sub Msg))))
 (define (subs m) (if (Model.running m) (list (every 1000 tick)) (list)))
@@ -70,3 +70,7 @@
 ; due bottoni, in ogni stato
 (claim two-buttons (Π ((m Model)) (≡ (clicks (view m)) (list toggle reset))))
 (define (two-buttons m) refl)
+
+; ciò che si applica è tondo, e solo quello (Ocra)
+(claim rounded-iff-applies (Π ((m Model)) (≡ (ocra-shapes (view m)) true)))
+(define (rounded-iff-applies m) refl)
