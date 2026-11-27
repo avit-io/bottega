@@ -23,8 +23,9 @@
     (ink            "#15130f" "#ebddb2" "Text on the three surfaces (12:1 and up).")
     (ink-muted      "#594c33" "#a99b78" "Metadata and captions on the three surfaces (5.4:1 and up).")
     (line           "#15130f2e" "#ebddb22e" "Decorative rules; control borders use ink.")
-    (primary        "#15130f" "#d6b866" "Apply: buttons, active links, selection. Highest contrast on the ground.")
+    (primary        "#15130f" "#d6b866" "Apply: buttons, active links. Highest contrast on the ground.")
     (on-primary     "#efe0b4" "#15130f" "Text on primary.")
+    (selection      "#d6b866" "#4a412c" "Selected text, under ink: ochre, not black.")
     (focus          "#6e4f12" "#f2d37a" "Focus ring, 2px solid with 2px offset.")
     (cinabro        "#9a3220" "#e8806a" "Error, always with a word.")
     (terraverde     "#43603a" "#9dbb86" "Success, a closed proof, always with a word.")
@@ -114,7 +115,7 @@ CSS
            (if (eq? theme second) "(light)" "Nero (dark)") (if (eq? theme second) "Ocra" "Ocra Nero"))
    (format "background = ~a\nforeground = ~a\ncursor_bg = ~a\ncursor_fg = ~a\ncursor_border = ~a\n"
            (c 'surface) (c 'ink) (c 'primary) (c 'on-primary) (c 'primary))
-   (format "selection_bg = ~a\nselection_fg = ~a\n" (c 'primary) (c 'on-primary))
+   (format "selection_bg = ~a\nselection_fg = ~a\n" (c 'selection) (c 'ink))
    (format "ansi = [~a]\nbrights = [~a]\n" (string-join ansi8 ", ") (string-join bright8 ", "))))
 
 ;; Neovim: one colors/ocra.lua, Nero when background=dark, Ocra when light. Few colours, on purpose:
@@ -131,7 +132,7 @@ CSS
     (Error cinabro #f bold) (ErrorMsg cinabro #f bold) (WarningMsg syn-string #f bold)
     (LineNr syn-paren #f #f) (CursorLineNr ink #f bold) (CursorLine #f surface-raised #f) (ColorColumn #f surface-raised #f)
     (SignColumn ink-muted surface #f) (NonText syn-paren #f #f) (Whitespace syn-paren #f #f)
-    (Visual on-primary primary #f) (Search nero ocra #f) (IncSearch on-primary primary bold) (CurSearch on-primary primary bold)
+    (Visual ink selection #f) (Search nero ocra #f) (IncSearch on-primary primary bold) (CurSearch on-primary primary bold)
     (MatchParen ink surface-sunken bold)
     (Pmenu ink surface-raised #f) (PmenuSel on-primary primary bold) (PmenuSbar #f surface-raised #f) (PmenuThumb #f ink-muted #f)
     (StatusLine ink surface-raised #f) (StatusLineNC ink-muted surface #f) (WinSeparator syn-paren #f #f)
