@@ -109,7 +109,7 @@
 (let ([wz (ocra-wezterm caddr)] [nv (ocra-nvim)])
   (for ([k '("ansi" "brights")])
     (check-equal? (length (regexp-match* #px"#[0-9a-f]{6}" (cadr (regexp-match (pregexp (string-append k " = \\[([^]]*)\\]")) wz)))) 8 k))
-  (check-true (string-contains? nv "set(\"Normal\", { fg = p[\"ink\"], bg = p[\"paper\"] })"))
+  (check-true (string-contains? nv "set(\"Normal\", { fg = p[\"ink\"], bg = p[\"surface\"] })"))
   (check-true (string-contains? nv "set(\"@punctuation.bracket\", { link = \"Delimiter\" })")))       ; parentheses step back
 ;; Claude Code: a theme file Claude reads, with the diff as tints, not bright green
 (let ([j (string->jsexpr (ocra-claude))])
