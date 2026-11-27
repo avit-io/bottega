@@ -94,7 +94,7 @@
 
 ;; --- Ocra: one source for the page and for Tailwind ---
 
-(require affresco/ocra)
+(require affresco/ocra json)
 (let ([css (ocra-css)] [tw (ocra-tailwind)])
   (define (block from) (car (regexp-match (pregexp (string-append (regexp-quote from) "[^}]*")) css)))
   (for ([c colors])
@@ -111,3 +111,7 @@
     (check-equal? (length (regexp-match* #px"#[0-9a-f]{6}" (cadr (regexp-match (pregexp (string-append k " = \\[([^]]*)\\]")) wz)))) 8 k))
   (check-true (string-contains? nv "set(\"Normal\", { fg = p[\"ink\"], bg = p[\"surface\"] })"))
   (check-true (string-contains? nv "set(\"@punctuation.bracket\", { link = \"Delimiter\" })")))       ; parentheses step back
+;; Claude Code: a theme file Claude reads, with the diff as tints, not bright green
+(let ([j (string->jsexpr (ocra-claude))])
+  (check-equal? (hash-ref j 'base) "light")
+  (check-equal? (hash-ref (hash-ref j 'overrides) 'diffAdded) "#bfbc92"))
