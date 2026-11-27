@@ -104,3 +104,10 @@
     (check-true (string-contains? tw (format "--color-~a: var(--~a);" name name)) name))
   (check-true (regexp-match? #px"\\.btn\\{[^}]*border-radius:var\\(--radius-paren\\)" css))       ; apply is round
   (check-true (regexp-match? #px"\\.card\\{[^}]*border-radius:var\\(--radius-0\\)" css)))         ; eval is square
+
+;; the terminal and the editor: eight hues each way, and Normal in both themes
+(let ([wz (ocra-wezterm caddr)] [nv (ocra-nvim)])
+  (for ([k '("ansi" "brights")])
+    (check-equal? (length (regexp-match* #px"#[0-9a-f]{6}" (cadr (regexp-match (pregexp (string-append k " = \\[([^]]*)\\]")) wz)))) 8 k))
+  (check-true (string-contains? nv "set(\"Normal\", { fg = p[\"ink\"], bg = p[\"surface\"] })"))
+  (check-true (string-contains? nv "set(\"@punctuation.bracket\", { link = \"Delimiter\" })")))       ; parentheses step back
